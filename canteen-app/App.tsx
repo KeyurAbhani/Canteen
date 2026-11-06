@@ -228,7 +228,7 @@ function CanteenApp() {
     useState<BhojanshalaMeal>("Breakfast");
   const [bhojanshalaCategory, setBhojanshalaCategory] =
     useState<BhojanshalaCategory>("Member");
-  const [bhojanshalaQuantity, setBhojanshalaQuantity] = useState("1");
+  const [bhojanshalaQuantity, setBhojanshalaQuantity] = useState("0");
   const [bhojanshalaPrices, setBhojanshalaPrices] = useState<
     Record<BhojanshalaMeal, string>
   >(() => ({
