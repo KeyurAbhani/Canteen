@@ -32,6 +32,7 @@ type BhojanshalaSlip = {
   meal: BhojanshalaMeal;
   category: BhojanshalaCategory;
   price: number;
+  quantity: number;
   created_at: string;
 };
 type BhojanshalaCounts = Record<
@@ -156,7 +157,7 @@ function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, token INTEGER NOT NULL, order_date TEXT NOT NULL, total REAL NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, item_name TEXT NOT NULL, unit_price REAL NOT NULL, quantity INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS daily_token_sequences (order_date TEXT PRIMARY KEY, last_token INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS bhojanshala_slips (id INTEGER PRIMARY KEY AUTOINCREMENT, meal TEXT NOT NULL, category TEXT NOT NULL, price REAL NOT NULL, order_date TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS bhojanshala_slips (id INTEGER PRIMARY KEY AUTOINCREMENT, meal TEXT NOT NULL, category TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, order_date TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS app_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL);`);
   db.execSync(
     "CREATE TABLE IF NOT EXISTS inventory_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT NOT NULL, quantity REAL NOT NULL, unit TEXT NOT NULL, total_cost REAL NOT NULL, purchase_date TEXT NOT NULL, created_at TEXT NOT NULL)",
@@ -171,6 +172,13 @@ function initializeDatabase() {
   db.runSync(
     "UPDATE menu_items SET meal_type = 'lunch' WHERE meal_type IS NULL OR trim(meal_type) = ''",
   );
+  const bhojanshalaSlipColumns = db.getAllSync<{ name: string }>(
+    "PRAGMA table_info(bhojanshala_slips)",
+  );
+  if (!bhojanshalaSlipColumns.some((column) => column.name === "quantity"))
+    db.execSync(
+      "ALTER TABLE bhojanshala_slips ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1",
+    );
   const orderItemColumns = db.getAllSync<{ name: string }>(
     "PRAGMA table_info(order_items)",
   );
@@ -220,6 +228,7 @@ function CanteenApp() {
     useState<BhojanshalaMeal>("Breakfast");
   const [bhojanshalaCategory, setBhojanshalaCategory] =
     useState<BhojanshalaCategory>("Member");
+  const [bhojanshalaQuantity, setBhojanshalaQuantity] = useState("1");
   const [bhojanshalaPrices, setBhojanshalaPrices] = useState<
     Record<BhojanshalaMeal, string>
   >(() => ({
@@ -455,7 +464,7 @@ function CanteenApp() {
       category: BhojanshalaCategory;
       count: number;
     }>(
-      "SELECT meal, category, COUNT(*) AS count FROM bhojanshala_slips WHERE order_date = ? GROUP BY meal, category",
+      "SELECT meal, category, COALESCE(SUM(quantity), 0) AS count FROM bhojanshala_slips WHERE order_date = ? GROUP BY meal, category",
       day,
     );
     for (const row of savedCounts) {
@@ -1061,6 +1070,11 @@ function CanteenApp() {
   }
 
   function generateBhojanshalaSlip() {
+    const quantity = Number(bhojanshalaQuantity.trim());
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
+      Alert.alert("Check meal quantity", "Enter a whole number of 1 or more.");
+      return;
+    }
     const rawPrice = bhojanshalaPrices[bhojanshalaMeal]
       .trim()
       .replace(",", ".");
@@ -1079,10 +1093,11 @@ function CanteenApp() {
     const price = bhojanshalaCategory === "Sevarthi" ? 0 : memberPrice;
     try {
       db.runSync(
-        "INSERT INTO bhojanshala_slips (meal, category, price, order_date, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO bhojanshala_slips (meal, category, price, quantity, order_date, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         bhojanshalaMeal,
         bhojanshalaCategory,
         price,
+        quantity,
         today(),
         createdAt,
       );
@@ -1097,6 +1112,7 @@ function CanteenApp() {
       meal: bhojanshalaMeal,
       category: bhojanshalaCategory,
       price,
+      quantity,
       created_at: createdAt,
     });
     setBhojanshalaPreviewVisible(true);
@@ -1448,8 +1464,17 @@ function CanteenApp() {
               ),
             )}
           </View>
+          <Text style={s.fieldLabel}>Number of meals</Text>
+          <TextInput
+            value={bhojanshalaQuantity}
+            onChangeText={setBhojanshalaQuantity}
+            placeholder="1"
+            keyboardType="number-pad"
+            style={s.input}
+          />
           <Text style={s.hint}>
-            Member prices are set in Menu. Sevarthi slips are always free.
+            This quantity applies to Members and Sevarthis. Member prices are
+            set in Menu; Sevarthi slips are always free.
           </Text>
           <TouchableOpacity
             style={s.primary}
@@ -2291,10 +2316,17 @@ function CanteenApp() {
                 <Text style={s.bhojanshalaCategoryText}>
                   {bhojanshalaSlip.category.toUpperCase()}
                 </Text>
+                <View style={s.receiptDivider} />
+                <View style={s.receiptLine}>
+                  <Text style={s.receiptItem}>Number of meals</Text>
+                  <Text style={s.receiptAmount}>
+                    {bhojanshalaSlip.quantity}
+                  </Text>
+                </View>
                 <Text style={s.bhojanshalaPriceText}>
                   {bhojanshalaSlip.category === "Sevarthi"
                     ? "FREE"
-                    : money(bhojanshalaSlip.price)}
+                    : money(bhojanshalaSlip.price * bhojanshalaSlip.quantity)}
                 </Text>
                 <Text style={s.receiptDate}>
                   {new Date(bhojanshalaSlip.created_at).toLocaleString()}

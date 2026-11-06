@@ -31,6 +31,7 @@ export type PrintableBhojanshalaSlip = {
   meal: 'Breakfast' | 'Lunch' | 'Dinner';
   category: 'Member' | 'Sevarthi';
   price: number;
+  quantity: number;
   created_at: string;
 };
 
@@ -168,7 +169,12 @@ export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
     command(GS, 0x21, 0x00),
     command(ESC, 0x45, 0x00),
     centered(slip.category.toUpperCase()),
-    centered(slip.category === 'Sevarthi' ? 'FREE' : `AMOUNT: ${amount(slip.price)}`),
+    line(`NUMBER OF MEALS: ${slip.quantity}`),
+    centered(
+      slip.category === 'Sevarthi'
+        ? 'FREE'
+        : `TOTAL: ${amount(slip.price * slip.quantity)}`,
+    ),
     centered(new Date(slip.created_at).toLocaleString()),
     separator(),
     cut(),
