@@ -35,6 +35,7 @@ type BhojanshalaSlip = {
   quantity: number;
   created_at: string;
 };
+type HistoryBhojanshalaSlip = BhojanshalaSlip & { id: number };
 type BhojanshalaCounts = Record<
   BhojanshalaMeal,
   Record<BhojanshalaCategory, number>
@@ -197,6 +198,11 @@ function CanteenApp() {
   const [bhojanshalaCounts, setBhojanshalaCounts] =
     useState<BhojanshalaCounts>(emptyBhojanshalaCounts);
   const [historyOrders, setHistoryOrders] = useState<HistoryOrder[]>([]);
+  const [historyBhojanshalaSlips, setHistoryBhojanshalaSlips] = useState<HistoryBhojanshalaSlip[]>([]);
+  const [editingBhojanshalaSlip, setEditingBhojanshalaSlip] = useState<HistoryBhojanshalaSlip | null>(null);
+  const [editBhojanshalaMeal, setEditBhojanshalaMeal] = useState<BhojanshalaMeal>("Breakfast");
+  const [editBhojanshalaCategory, setEditBhojanshalaCategory] = useState<BhojanshalaCategory>("Member");
+  const [editBhojanshalaQuantity, setEditBhojanshalaQuantity] = useState("1");
   const [orderCount, setOrderCount] = useState(0);
   const [modal, setModal] = useState(false);
   const [editItem, setEditItem] = useState<MenuItem | null>(null);
@@ -486,6 +492,12 @@ function CanteenApp() {
           order.id,
         ),
       })),
+    );
+    setHistoryBhojanshalaSlips(
+      db.getAllSync<HistoryBhojanshalaSlip>(
+        "SELECT id, meal, category, price, quantity, created_at FROM bhojanshala_slips WHERE order_date = ? ORDER BY created_at DESC, id DESC",
+        today(),
+      ),
     );
   }
   function refreshPurchases() {
@@ -1117,6 +1129,48 @@ function CanteenApp() {
     });
     setBhojanshalaPreviewVisible(true);
     refreshReport(loadedReportDate);
+    refreshHistory();
+  }
+
+  function editHistoryBhojanshalaSlip(slip: HistoryBhojanshalaSlip) {
+    setEditingBhojanshalaSlip(slip);
+    setEditBhojanshalaMeal(slip.meal);
+    setEditBhojanshalaCategory(slip.category);
+    setEditBhojanshalaQuantity(String(slip.quantity));
+  }
+
+  function saveHistoryBhojanshalaSlip() {
+    if (!editingBhojanshalaSlip) return;
+    const quantity = Number(editBhojanshalaQuantity.trim());
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
+      Alert.alert("Check meal quantity", "Enter a whole number of 1 or more.");
+      return;
+    }
+    const rawPrice = bhojanshalaPrices[editBhojanshalaMeal].trim().replace(",", ".");
+    const memberPrice = Number(rawPrice);
+    if (editBhojanshalaCategory === "Member" && (!rawPrice || !Number.isFinite(memberPrice) || memberPrice < 0)) {
+      Alert.alert("Set the member price first", `Enter and save a valid ${editBhojanshalaMeal.toLowerCase()} price.`);
+      return;
+    }
+    const price = editBhojanshalaCategory === "Sevarthi" ? 0 : memberPrice;
+    db.runSync(
+      "UPDATE bhojanshala_slips SET meal = ?, category = ?, price = ?, quantity = ? WHERE id = ?",
+      editBhojanshalaMeal, editBhojanshalaCategory, price, quantity, editingBhojanshalaSlip.id,
+    );
+    setEditingBhojanshalaSlip(null);
+    refreshHistory();
+    refreshReport(loadedReportDate);
+  }
+
+  function cancelBhojanshalaSlip(slip: HistoryBhojanshalaSlip) {
+    Alert.alert("Cancel this slip?", `Remove ${slip.quantity} ${slip.meal.toLowerCase()} meal${slip.quantity === 1 ? "" : "s"} for ${slip.category.toLowerCase()}?`, [
+      { text: "Keep slip", style: "cancel" },
+      { text: "Cancel slip", style: "destructive", onPress: () => {
+        db.runSync("DELETE FROM bhojanshala_slips WHERE id = ?", slip.id);
+        refreshHistory();
+        refreshReport(loadedReportDate);
+      } },
+    ]);
   }
 
   function openEditor(item?: MenuItem) {
@@ -1648,9 +1702,32 @@ function CanteenApp() {
                 </TouchableOpacity>
               </View>
             ))}
-            {!historyOrders.length && (
+            {historyBhojanshalaSlips.length > 0 && (
+              <>
+                <Text style={[s.sectionTitle, { marginTop: 10, marginBottom: 10 }]}>Bhojanshala slips</Text>
+                {historyBhojanshalaSlips.map((slip) => (
+                  <View key={`bhojanshala-${slip.id}`} style={s.historyCard}>
+                    <View style={s.totalRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.orderToken}>{slip.meal} · {slip.category}</Text>
+                        <Text style={s.itemPrice}>{new Date(slip.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+                      </View>
+                      <Text style={s.orderTotal}>{slip.quantity} meal{slip.quantity === 1 ? "" : "s"}</Text>
+                    </View>
+                    {slip.category === "Member" && <Text style={[s.itemPrice, { textAlign: "center", paddingTop: 6 }]}>{money(slip.price * slip.quantity)}</Text>}
+                    <TouchableOpacity style={s.addToOrder} onPress={() => editHistoryBhojanshalaSlip(slip)}>
+                      <Text style={s.actionText}>Edit slip</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.cancelOrderButton} onPress={() => cancelBhojanshalaSlip(slip)}>
+                      <Text style={s.deleteText}>Cancel slip</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </>
+            )}
+            {!historyOrders.length && !historyBhojanshalaSlips.length && (
               <Text style={s.emptyHistory}>
-                No orders yet today. New orders will appear here.
+                No orders or Bhojanshala slips yet today.
               </Text>
             )}
           </ScrollView>
@@ -2172,6 +2249,40 @@ function CanteenApp() {
               <TouchableOpacity onPress={saveMenuItem} style={s.smallPrimary}>
                 <Text style={s.primaryText}>Save item</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={editingBhojanshalaSlip !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingBhojanshalaSlip(null)}
+      >
+        <View style={s.scrim}>
+          <View style={s.dialog}>
+            <Text style={s.title}>Edit Bhojanshala slip</Text>
+            <Text style={s.fieldLabel}>Meal</Text>
+            <View style={s.copyTabs}>
+              {(["Breakfast", "Lunch", "Dinner"] as BhojanshalaMeal[]).map((meal) => (
+                <TouchableOpacity key={meal} style={[s.bhojanshalaOption, editBhojanshalaMeal === meal && s.bhojanshalaOptionActive]} onPress={() => setEditBhojanshalaMeal(meal)}>
+                  <Text style={[s.bhojanshalaOptionText, editBhojanshalaMeal === meal && s.bhojanshalaOptionTextActive]}>{meal}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.fieldLabel}>For</Text>
+            <View style={s.copyTabs}>
+              {(["Member", "Sevarthi"] as BhojanshalaCategory[]).map((category) => (
+                <TouchableOpacity key={category} style={[s.bhojanshalaOption, editBhojanshalaCategory === category && s.bhojanshalaOptionActive]} onPress={() => setEditBhojanshalaCategory(category)}>
+                  <Text style={[s.bhojanshalaOptionText, editBhojanshalaCategory === category && s.bhojanshalaOptionTextActive]}>{category}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.fieldLabel}>Number of meals</Text>
+            <TextInput value={editBhojanshalaQuantity} onChangeText={setEditBhojanshalaQuantity} keyboardType="number-pad" style={s.input} />
+            <View style={s.dialogButtons}>
+              <TouchableOpacity onPress={() => setEditingBhojanshalaSlip(null)} style={s.cancel}><Text>Close</Text></TouchableOpacity>
+              <TouchableOpacity onPress={saveHistoryBhojanshalaSlip} style={s.smallPrimary}><Text style={s.primaryText}>Save changes</Text></TouchableOpacity>
             </View>
           </View>
         </View>
