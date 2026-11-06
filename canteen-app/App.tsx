@@ -1423,15 +1423,16 @@ function CanteenApp() {
                 <TouchableOpacity
                   key={meal}
                   style={[
-                    s.copyTab,
-                    bhojanshalaMeal === meal && s.copyTabActive,
+                    s.bhojanshalaOption,
+                    bhojanshalaMeal === meal && s.bhojanshalaOptionActive,
                   ]}
                   onPress={() => setBhojanshalaMeal(meal)}
                 >
                   <Text
                     style={[
-                      s.copyTabText,
-                      bhojanshalaMeal === meal && s.copyTabTextActive,
+                      s.bhojanshalaOptionText,
+                      bhojanshalaMeal === meal &&
+                        s.bhojanshalaOptionTextActive,
                     ]}
                   >
                     {meal}
@@ -1447,15 +1448,17 @@ function CanteenApp() {
                 <TouchableOpacity
                   key={category}
                   style={[
-                    s.copyTab,
-                    bhojanshalaCategory === category && s.copyTabActive,
+                    s.bhojanshalaOption,
+                    bhojanshalaCategory === category &&
+                      s.bhojanshalaOptionActive,
                   ]}
                   onPress={() => setBhojanshalaCategory(category)}
                 >
                   <Text
                     style={[
-                      s.copyTabText,
-                      bhojanshalaCategory === category && s.copyTabTextActive,
+                      s.bhojanshalaOptionText,
+                      bhojanshalaCategory === category &&
+                        s.bhojanshalaOptionTextActive,
                     ]}
                   >
                     {category}
@@ -2983,6 +2986,22 @@ const s = StyleSheet.create({
   copyTabActive: { backgroundColor: "#fff" },
   copyTabText: { color: "#718075", fontWeight: "700" },
   copyTabTextActive: { color: "#25643b" },
+  bhojanshalaOption: {
+    flex: 1,
+    minHeight: 42,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+  },
+  bhojanshalaOptionActive: { backgroundColor: "#287243" },
+  bhojanshalaOptionText: {
+    color: "#718075",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  bhojanshalaOptionTextActive: { color: "#fff" },
   receiptPaper: {
     backgroundColor: "#fff",
     borderRadius: 8,
