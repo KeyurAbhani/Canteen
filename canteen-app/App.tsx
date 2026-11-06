@@ -2320,17 +2320,15 @@ function CanteenApp() {
                   {bhojanshalaSlip.category.toUpperCase()}
                 </Text>
                 <View style={s.receiptDivider} />
-                <View style={s.receiptLine}>
-                  <Text style={s.receiptItem}>Number of meals</Text>
-                  <Text style={s.receiptAmount}>
-                    {bhojanshalaSlip.quantity}
-                  </Text>
-                </View>
-                <Text style={s.bhojanshalaPriceText}>
-                  {bhojanshalaSlip.category === "Sevarthi"
-                    ? "FREE"
-                    : money(bhojanshalaSlip.price * bhojanshalaSlip.quantity)}
+                <Text style={s.receiptKind}>QUANTITY</Text>
+                <Text style={s.bhojanshalaCountText}>
+                  {bhojanshalaSlip.quantity}
                 </Text>
+                {bhojanshalaSlip.category === "Member" && (
+                  <Text style={s.bhojanshalaPriceText}>
+                    {money(bhojanshalaSlip.price * bhojanshalaSlip.quantity)}
+                  </Text>
+                )}
                 <Text style={s.receiptDate}>
                   {new Date(bhojanshalaSlip.created_at).toLocaleString()}
                 </Text>
@@ -2574,10 +2572,17 @@ const s = StyleSheet.create({
     textAlign: "center",
     marginTop: 8,
   },
+  bhojanshalaCountText: {
+    color: "#18291e",
+    fontSize: 48,
+    fontWeight: "900",
+    textAlign: "center",
+    marginTop: 8,
+  },
   bhojanshalaPriceText: {
     color: "#18291e",
-    fontSize: 22,
-    fontWeight: "900",
+    fontSize: 16,
+    fontWeight: "500",
     textAlign: "center",
     marginTop: 12,
   },

@@ -169,12 +169,13 @@ export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
     command(GS, 0x21, 0x00),
     command(ESC, 0x45, 0x00),
     centered(slip.category.toUpperCase()),
-    line(`NUMBER OF MEALS: ${slip.quantity}`),
-    centered(
-      slip.category === 'Sevarthi'
-        ? 'FREE'
-        : `TOTAL: ${amount(slip.price * slip.quantity)}`,
-    ),
+    centered('QUANTITY'),
+    command(GS, 0x21, 0x22),
+    centered(String(slip.quantity)),
+    command(GS, 0x21, 0x00),
+    ...(slip.category === 'Member'
+      ? [centered(amount(slip.price * slip.quantity))]
+      : []),
     centered(new Date(slip.created_at).toLocaleString()),
     separator(),
     cut(),
