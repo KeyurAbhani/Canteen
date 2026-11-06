@@ -20,6 +20,18 @@ export type PrintableReport = {
   totalSales: number;
   averageOrderAmount: number;
   items: Array<{ name: string; quantity: number; revenue: number }>;
+  bhojanshalaCounts: Array<{
+    meal: string;
+    members: number;
+    sevarthis: number;
+  }>;
+};
+
+export type PrintableBhojanshalaSlip = {
+  meal: 'Breakfast' | 'Lunch' | 'Dinner';
+  category: 'Member' | 'Sevarthi';
+  price: number;
+  created_at: string;
 };
 
 const ESC = 0x1b;
@@ -62,11 +74,17 @@ function amount(value: number) {
 
 function itemRow(quantity: number, name: string, subtotal?: number) {
   const left = `${quantity} x ${name}`;
-  if (subtotal === undefined) return line(left);
+  if (subtotal === undefined) {
+    return Buffer.concat([command(GS, 0x21, 0x01), line(left), command(GS, 0x21, 0x00)]);
+  }
   const right = amount(subtotal);
   const available = Math.max(1, WIDTH - right.length - 1);
   const fittedLeft = left.length > available ? `${left.slice(0, available - 1)}…` : left;
-  return line(`${fittedLeft}${' '.repeat(Math.max(1, WIDTH - fittedLeft.length - right.length))}${right}`);
+  return Buffer.concat([
+    command(GS, 0x21, 0x01),
+    line(`${fittedLeft}${' '.repeat(Math.max(1, WIDTH - fittedLeft.length - right.length))}${right}`),
+    command(GS, 0x21, 0x00),
+  ]);
 }
 
 function amountRow(label: string, value: number) {
@@ -94,7 +112,7 @@ function customerSlip(order: PrintableOrder) {
     centered('CUSTOMER COPY'),
     centered(new Date(order.created_at).toLocaleString()),
     command(ESC, 0x45, 0x01),
-    command(ESC, 0x61, 0x01), command(GS, 0x21, 0x11), line(`TOKEN #${order.token}`),
+    command(ESC, 0x61, 0x01), command(GS, 0x21, 0x22), line(`TOKEN #${order.token}`),
     command(GS, 0x21, 0x00), command(ESC, 0x45, 0x00), command(ESC, 0x61, 0x00),
     separator(),
     line(`TOTAL ITEMS: ${itemCount}`),
@@ -109,12 +127,12 @@ function staffSlip(order: PrintableOrder, item: PrintableOrder['items'][number])
   return Buffer.concat([
     startSlip(),
     centered('STAFF COPY'),
-    command(ESC, 0x61, 0x01), command(ESC, 0x45, 0x01), command(GS, 0x21, 0x11),
+    command(ESC, 0x61, 0x01), command(ESC, 0x45, 0x01), command(GS, 0x21, 0x22),
     line(`TOKEN #${order.token}`),
     command(GS, 0x21, 0x00), command(ESC, 0x45, 0x00),
     centered(new Date(order.created_at).toLocaleString()),
     separator(),
-    command(ESC, 0x45, 0x01), command(GS, 0x21, 0x01),
+    command(ESC, 0x45, 0x01), command(GS, 0x21, 0x02),
     centered(`${item.quantity} x ${item.item_name}`),
     command(GS, 0x21, 0x00), command(ESC, 0x45, 0x00),
     command(ESC, 0x61, 0x00),
@@ -133,6 +151,25 @@ export function makePrinterTestJob() {
     centered('PRINTER TEST'),
     separator(),
     line('Wi-Fi ESC/POS connection is working.'),
+    separator(),
+    cut(),
+  ]);
+}
+
+export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
+  return Buffer.concat([
+    startSlip(),
+    centered('TRIMANDIR CANTEEN'),
+    centered('BHOJANSHALA'),
+    separator(),
+    command(ESC, 0x45, 0x01),
+    command(GS, 0x21, 0x11),
+    centered(slip.meal.toUpperCase()),
+    command(GS, 0x21, 0x00),
+    command(ESC, 0x45, 0x00),
+    centered(slip.category.toUpperCase()),
+    centered(slip.category === 'Sevarthi' ? 'FREE' : `AMOUNT: ${amount(slip.price)}`),
+    centered(new Date(slip.created_at).toLocaleString()),
     separator(),
     cut(),
   ]);
@@ -157,6 +194,11 @@ export function makeReportPrintJob(report: PrintableReport) {
     line(`ORDERS: ${report.orders}`),
     amountRow('TOTAL SALES', report.totalSales),
     amountRow('AVERAGE ORDER', report.averageOrderAmount),
+    separator(),
+    centered('BHOJANSHALA COUNTS'),
+    ...report.bhojanshalaCounts.map(({ meal, members, sevarthis }) =>
+      line(`${meal.padEnd(14)}MEM ${members}  SEV ${sevarthis}`),
+    ),
     gujaratiReportFooter(),
     cut(),
   ]);

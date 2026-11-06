@@ -33,7 +33,8 @@
     },
     "plugins": [
       "expo-sqlite",
-      "react-native-bluetooth-ble"
+      "react-native-bluetooth-ble",
+      "expo-status-bar"
     ]
   }
 }

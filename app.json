@@ -10,7 +10,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.keyurabhani.trimandircanteen",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription": "Connect to the canteen's Wi-Fi receipt printer on your local network."
       }
     },
     "android": {
@@ -37,7 +38,8 @@
     },
     "plugins": [
       "expo-sqlite",
-      "react-native-bluetooth-ble"
+      "react-native-bluetooth-ble",
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {

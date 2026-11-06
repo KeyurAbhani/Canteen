@@ -4,20 +4,20 @@
   "main": "index.ts",
   "dependencies": {
     "buffer": "^6.0.3",
-    "expo": "~57.0.27",
-    "expo-sqlite": "~57.0.4",
-    "expo-status-bar": "~57.0.1",
-    "react": "19.2.3",
-    "react-native": "0.86.3",
+    "expo": "~58.0.0",
+    "expo-sqlite": "~58.0.15",
+    "expo-status-bar": "~58.0.4",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
     "react-native-bluetooth-ble": "^0.4.4",
     "react-native-nitro-modules": "^0.37.1",
-    "react-native-safe-area-context": "~5.7.0",
+    "react-native-safe-area-context": "~5.11.1",
     "react-native-tcp-socket": "^6.4.3"
   },
   "devDependencies": {
-    "@types/react": "~19.2.2",
+    "@types/react": "~19.3.0",
     "eslint": "^9.0.0",
-    "eslint-config-expo": "~57.0.2",
+    "eslint-config-expo": "~58.0.4",
     "typescript": "~6.0.3"
   },
   "scripts": {
