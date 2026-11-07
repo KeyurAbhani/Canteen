@@ -1175,6 +1175,7 @@ function CanteenApp() {
     }
     const createdAt = new Date().toISOString();
     const price = bhojanshalaCategory === "Sevarthi" ? 0 : memberPrice;
+    const paymentMode = bhojanshalaCategory === "Member" ? bhojanshalaPaymentMode : "Online";
     try {
       db.runSync(
         "INSERT INTO bhojanshala_slips (meal, category, price, quantity, payment_mode, order_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1182,7 +1183,7 @@ function CanteenApp() {
         bhojanshalaCategory,
         price,
         quantity,
-        bhojanshalaPaymentMode,
+        paymentMode,
         today(),
         createdAt,
       );
@@ -1198,7 +1199,7 @@ function CanteenApp() {
       category: bhojanshalaCategory,
       price,
       quantity,
-      payment_mode: bhojanshalaPaymentMode,
+      payment_mode: paymentMode,
       created_at: createdAt,
     });
     setBhojanshalaPreviewVisible(true);
@@ -1229,9 +1230,10 @@ function CanteenApp() {
       return;
     }
     const price = editBhojanshalaCategory === "Sevarthi" ? 0 : memberPrice;
+    const paymentMode = editBhojanshalaCategory === "Member" ? editBhojanshalaPaymentMode : "Online";
     db.runSync(
       "UPDATE bhojanshala_slips SET meal = ?, category = ?, price = ?, quantity = ?, payment_mode = ? WHERE id = ?",
-      editBhojanshalaMeal, editBhojanshalaCategory, price, quantity, editBhojanshalaPaymentMode, editingBhojanshalaSlip.id,
+      editBhojanshalaMeal, editBhojanshalaCategory, price, quantity, paymentMode, editingBhojanshalaSlip.id,
     );
     setEditingBhojanshalaSlip(null);
     refreshHistory();
@@ -1602,26 +1604,30 @@ function CanteenApp() {
               ),
             )}
           </View>
-          <Text style={s.fieldLabel}>Payment mode</Text>
-          <View style={s.paymentModeRow}>
-            {(["Online", "Cash"] as BhojanshalaPaymentMode[]).map((mode) => {
-              const selected = bhojanshalaPaymentMode === mode;
-              return (
-                <TouchableOpacity
-                  key={mode}
-                  style={s.paymentModeOption}
-                  onPress={() => setBhojanshalaPaymentMode(mode)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                >
-                  <View style={[s.radioOuter, selected && s.radioOuterSelected]}>
-                    {selected && <View style={s.radioInner} />}
-                  </View>
-                  <Text style={s.paymentModeText}>{mode}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          {bhojanshalaCategory === "Member" && (
+            <>
+              <Text style={s.fieldLabel}>Payment mode</Text>
+              <View style={s.paymentModeRow}>
+                {(["Online", "Cash"] as BhojanshalaPaymentMode[]).map((mode) => {
+                  const selected = bhojanshalaPaymentMode === mode;
+                  return (
+                    <TouchableOpacity
+                      key={mode}
+                      style={s.paymentModeOption}
+                      onPress={() => setBhojanshalaPaymentMode(mode)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                    >
+                      <View style={[s.radioOuter, selected && s.radioOuterSelected]}>
+                        {selected && <View style={s.radioInner} />}
+                      </View>
+                      <Text style={s.paymentModeText}>{mode}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
           <Text style={s.fieldLabel}>Number of meals</Text>
           <TextInput
             value={bhojanshalaQuantity}
@@ -1804,7 +1810,7 @@ function CanteenApp() {
                     <View style={s.totalRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={s.orderToken}>{slip.meal} · {slip.category}</Text>
-                        <Text style={s.itemPrice}>{slip.payment_mode} · {new Date(slip.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+                        <Text style={s.itemPrice}>{slip.category === "Member" ? `${slip.payment_mode} · ` : ""}{new Date(slip.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
                       </View>
                       <Text style={s.orderTotal}>{slip.quantity} meal{slip.quantity === 1 ? "" : "s"}</Text>
                     </View>
@@ -2369,26 +2375,30 @@ function CanteenApp() {
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={s.fieldLabel}>Payment mode</Text>
-            <View style={s.paymentModeRow}>
-              {(["Online", "Cash"] as BhojanshalaPaymentMode[]).map((mode) => {
-                const selected = editBhojanshalaPaymentMode === mode;
-                return (
-                  <TouchableOpacity
-                    key={mode}
-                    style={s.paymentModeOption}
-                    onPress={() => setEditBhojanshalaPaymentMode(mode)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                  >
-                    <View style={[s.radioOuter, selected && s.radioOuterSelected]}>
-                      {selected && <View style={s.radioInner} />}
-                    </View>
-                    <Text style={s.paymentModeText}>{mode}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            {editBhojanshalaCategory === "Member" && (
+              <>
+                <Text style={s.fieldLabel}>Payment mode</Text>
+                <View style={s.paymentModeRow}>
+                  {(["Online", "Cash"] as BhojanshalaPaymentMode[]).map((mode) => {
+                    const selected = editBhojanshalaPaymentMode === mode;
+                    return (
+                      <TouchableOpacity
+                        key={mode}
+                        style={s.paymentModeOption}
+                        onPress={() => setEditBhojanshalaPaymentMode(mode)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                      >
+                        <View style={[s.radioOuter, selected && s.radioOuterSelected]}>
+                          {selected && <View style={s.radioInner} />}
+                        </View>
+                        <Text style={s.paymentModeText}>{mode}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
             <Text style={s.fieldLabel}>Number of meals</Text>
             <TextInput value={editBhojanshalaQuantity} onChangeText={setEditBhojanshalaQuantity} keyboardType="number-pad" style={s.input} />
             <View style={s.dialogButtons}>
@@ -2581,9 +2591,11 @@ function CanteenApp() {
                 <Text style={s.bhojanshalaCategoryText}>
                   {bhojanshalaSlip.category.toUpperCase()}
                 </Text>
-                <Text style={s.receiptKind}>
-                  PAYMENT: {bhojanshalaSlip.payment_mode.toUpperCase()}
-                </Text>
+                {bhojanshalaSlip.category === "Member" && (
+                  <Text style={s.receiptKind}>
+                    PAYMENT: {bhojanshalaSlip.payment_mode.toUpperCase()}
+                  </Text>
+                )}
                 <View style={s.receiptDivider} />
                 <Text style={s.receiptKind}>QUANTITY</Text>
                 <Text style={s.bhojanshalaCountText}>

@@ -179,7 +179,9 @@ export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
     command(GS, 0x21, 0x00),
     command(ESC, 0x45, 0x00),
     centered(slip.category.toUpperCase()),
-    centered(`PAYMENT: ${slip.payment_mode.toUpperCase()}`),
+    ...(slip.category === 'Member'
+      ? [centered(`PAYMENT: ${slip.payment_mode.toUpperCase()}`)]
+      : []),
     centered('QUANTITY'),
     command(GS, 0x21, 0x22),
     centered(String(slip.quantity)),
