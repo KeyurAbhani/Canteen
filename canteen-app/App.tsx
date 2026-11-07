@@ -1479,7 +1479,16 @@ function CanteenApp() {
         </View>
       )}
       {tab === "bhojanshala" && (
-        <ScrollView style={s.body} contentContainerStyle={{ paddingBottom: 24 }}>
+        <KeyboardAvoidingView
+          style={s.body}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 32 }}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+        >
           <Text style={s.sectionTitle}>Create a Bhojanshala slip</Text>
           <Text style={s.fieldLabel}>Meal</Text>
           <View style={s.copyTabs}>
@@ -1582,6 +1591,7 @@ function CanteenApp() {
             Slips are counted in Sales and never use an order token.
           </Text>
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
       {tab === "menu" && (
         <View style={s.body}>
