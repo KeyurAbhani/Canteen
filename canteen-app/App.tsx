@@ -42,6 +42,7 @@ type BhojanshalaCounts = Record<
   BhojanshalaMeal,
   Record<BhojanshalaCategory, number>
 >;
+type BhojanshalaPaymentCounts = Record<BhojanshalaPaymentMode, number>;
 type MenuItem = {
   id: number;
   name: string;
@@ -203,6 +204,8 @@ function CanteenApp() {
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [bhojanshalaCounts, setBhojanshalaCounts] =
     useState<BhojanshalaCounts>(emptyBhojanshalaCounts);
+  const [bhojanshalaPaymentCounts, setBhojanshalaPaymentCounts] =
+    useState<BhojanshalaPaymentCounts>({ Online: 0, Cash: 0 });
   const [historyOrders, setHistoryOrders] = useState<HistoryOrder[]>([]);
   const [historyBhojanshalaSlips, setHistoryBhojanshalaSlips] = useState<HistoryBhojanshalaSlip[]>([]);
   const [editingBhojanshalaSlip, setEditingBhojanshalaSlip] = useState<HistoryBhojanshalaSlip | null>(null);
@@ -485,6 +488,19 @@ function CanteenApp() {
       if (counts[row.meal]) counts[row.meal][row.category] = row.count;
     }
     setBhojanshalaCounts(counts);
+    const savedPaymentCounts = db.getAllSync<{
+      payment_mode: BhojanshalaPaymentMode;
+      count: number;
+    }>(
+      "SELECT payment_mode, COALESCE(SUM(quantity), 0) AS count FROM bhojanshala_slips WHERE order_date = ? AND category = 'Member' GROUP BY payment_mode",
+      day,
+    );
+    const paymentCounts: BhojanshalaPaymentCounts = { Online: 0, Cash: 0 };
+    for (const row of savedPaymentCounts) {
+      if (row.payment_mode in paymentCounts)
+        paymentCounts[row.payment_mode] = row.count;
+    }
+    setBhojanshalaPaymentCounts(paymentCounts);
     setLoadedReportDate(day);
   }
   function refreshHistory() {
@@ -1013,6 +1029,7 @@ function CanteenApp() {
               sevarthis: bhojanshalaCounts[meal].Sevarthi,
             }),
           ),
+          bhojanshalaPaymentCounts,
         }),
       );
     } catch (error) {
@@ -2039,6 +2056,17 @@ function CanteenApp() {
                 )}
               </Text>
             </View>
+            <View style={[s.bhojanshalaCountTotals, s.paymentCountSummary]}>
+              <Text style={s.paymentCountHeading}>Member meals by payment</Text>
+              <View style={s.paymentCountValues}>
+                <Text style={s.bhojanshalaCountTotal}>
+                  Online: {bhojanshalaPaymentCounts.Online}
+                </Text>
+                <Text style={s.bhojanshalaCountTotal}>
+                  Cash: {bhojanshalaPaymentCounts.Cash}
+                </Text>
+              </View>
+            </View>
           </View>
           <TouchableOpacity
             style={[s.secondary, s.printerAction]}
@@ -2830,6 +2858,20 @@ const s = StyleSheet.create({
     color: "#28643b",
     fontSize: 13,
     fontWeight: "800",
+  },
+  paymentCountSummary: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    borderTopWidth: 1,
+    borderColor: "#eef0ec",
+    marginTop: 8,
+  },
+  paymentCountHeading: { color: "#718075", fontSize: 12, fontWeight: "700" },
+  paymentCountValues: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    paddingTop: 6,
   },
   list: { paddingBottom: 16 },
   itemRow: {

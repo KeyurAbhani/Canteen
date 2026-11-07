@@ -25,6 +25,7 @@ export type PrintableReport = {
     members: number;
     sevarthis: number;
   }>;
+  bhojanshalaPaymentCounts: { Online: number; Cash: number };
 };
 
 export type PrintableBhojanshalaSlip = {
@@ -208,6 +209,9 @@ export function makeReportPrintJob(report: PrintableReport) {
     ...report.bhojanshalaCounts.map(({ meal, members, sevarthis }) =>
       line(`${meal.padEnd(14)}MEM ${members}  SEV ${sevarthis}`),
     ),
+    separator(),
+    line(`MEMBER MEALS ONLINE: ${report.bhojanshalaPaymentCounts.Online}`),
+    line(`MEMBER MEALS CASH: ${report.bhojanshalaPaymentCounts.Cash}`),
     gujaratiReportFooter(),
     cut(),
   ]);
