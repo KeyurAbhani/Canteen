@@ -76,6 +76,9 @@ type SavedOrderItem = {
   quantity: number;
 };
 type HistoryOrder = SavedOrder & { items: SavedOrderItem[] };
+type HistoryEntry =
+  | { kind: "canteen"; created_at: string; order: HistoryOrder }
+  | { kind: "bhojanshala"; created_at: string; slip: HistoryBhojanshalaSlip };
 type ReceiptData = {
   token: number;
   total: number;
@@ -662,6 +665,21 @@ function CanteenApp() {
   );
   const reportTotal = rows.reduce((sum, row) => sum + row.revenue, 0);
   const averageOrderAmount = orderCount > 0 ? reportTotal / orderCount : 0;
+  const historyEntries = useMemo<HistoryEntry[]>(
+    () => [
+      ...historyOrders.map((order) => ({
+        kind: "canteen" as const,
+        created_at: order.created_at,
+        order,
+      })),
+      ...historyBhojanshalaSlips.map((slip) => ({
+        kind: "bhojanshala" as const,
+        created_at: slip.created_at,
+        slip,
+      })),
+    ].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
+    [historyOrders, historyBhojanshalaSlips],
+  );
   const configuredReceiptStart = Number(receiptSerialStart);
   const currentLastToken =
     db.getFirstSync<{ last_token: number }>(
@@ -1743,8 +1761,11 @@ function CanteenApp() {
         <View style={s.body}>
           <Text style={s.sectionTitle}>Today · {today()}</Text>
           <ScrollView style={{ flex: 1 }}>
-            {historyOrders.map((order) => (
-              <View key={order.id} style={s.historyCard}>
+            {historyEntries.map((entry) => {
+              if (entry.kind === "canteen") {
+                const order = entry.order;
+                return (
+              <View key={`canteen-${order.id}`} style={s.historyCard}>
                 <View style={s.totalRow}>
                   <View>
                     <Text style={s.orderToken}>Order #{order.token}</Text>
@@ -1801,11 +1822,10 @@ function CanteenApp() {
                   <Text style={s.deleteText}>Cancel entire order</Text>
                 </TouchableOpacity>
               </View>
-            ))}
-            {historyBhojanshalaSlips.length > 0 && (
-              <>
-                <Text style={[s.sectionTitle, { marginTop: 10, marginBottom: 10 }]}>Bhojanshala slips</Text>
-                {historyBhojanshalaSlips.map((slip) => (
+                );
+              }
+              const slip = entry.slip;
+              return (
                   <View key={`bhojanshala-${slip.id}`} style={s.historyCard}>
                     <View style={s.totalRow}>
                       <View style={{ flex: 1 }}>
@@ -1822,9 +1842,8 @@ function CanteenApp() {
                       <Text style={s.deleteText}>Cancel slip</Text>
                     </TouchableOpacity>
                   </View>
-                ))}
-              </>
-            )}
+              );
+            })}
             {!historyOrders.length && !historyBhojanshalaSlips.length && (
               <Text style={s.emptyHistory}>
                 No orders or Bhojanshala slips yet today.
