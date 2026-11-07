@@ -35,6 +35,12 @@
       "expo-sqlite",
       "react-native-bluetooth-ble",
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "39ae0e16-3859-4613-88a2-aa9a1ca1ee81"
+      }
+    },
+    "owner": "keyur-abhani"
   }
 }

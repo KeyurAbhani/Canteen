@@ -32,6 +32,7 @@ export type PrintableBhojanshalaSlip = {
   category: 'Member' | 'Sevarthi';
   price: number;
   quantity: number;
+  payment_mode: 'Online' | 'Cash';
   created_at: string;
 };
 
@@ -169,6 +170,7 @@ export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
     command(GS, 0x21, 0x00),
     command(ESC, 0x45, 0x00),
     centered(slip.category.toUpperCase()),
+    centered(`PAYMENT: ${slip.payment_mode.toUpperCase()}`),
     centered('QUANTITY'),
     command(GS, 0x21, 0x22),
     centered(String(slip.quantity)),

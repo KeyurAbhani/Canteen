@@ -28,11 +28,13 @@ import {
 type MenuMealType = "breakfast" | "breakfast_sevarthi" | "lunch" | "dinner";
 type BhojanshalaMeal = "Breakfast" | "Lunch" | "Dinner";
 type BhojanshalaCategory = "Member" | "Sevarthi";
+type BhojanshalaPaymentMode = "Online" | "Cash";
 type BhojanshalaSlip = {
   meal: BhojanshalaMeal;
   category: BhojanshalaCategory;
   price: number;
   quantity: number;
+  payment_mode: BhojanshalaPaymentMode;
   created_at: string;
 };
 type HistoryBhojanshalaSlip = BhojanshalaSlip & { id: number };
@@ -158,7 +160,7 @@ function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, token INTEGER NOT NULL, order_date TEXT NOT NULL, total REAL NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, item_name TEXT NOT NULL, unit_price REAL NOT NULL, quantity INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS daily_token_sequences (order_date TEXT PRIMARY KEY, last_token INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS bhojanshala_slips (id INTEGER PRIMARY KEY AUTOINCREMENT, meal TEXT NOT NULL, category TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, order_date TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS bhojanshala_slips (id INTEGER PRIMARY KEY AUTOINCREMENT, meal TEXT NOT NULL, category TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, payment_mode TEXT NOT NULL DEFAULT 'Online', order_date TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS app_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL);`);
   db.execSync(
     "CREATE TABLE IF NOT EXISTS inventory_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT NOT NULL, quantity REAL NOT NULL, unit TEXT NOT NULL, total_cost REAL NOT NULL, purchase_date TEXT NOT NULL, created_at TEXT NOT NULL)",
@@ -179,6 +181,10 @@ function initializeDatabase() {
   if (!bhojanshalaSlipColumns.some((column) => column.name === "quantity"))
     db.execSync(
       "ALTER TABLE bhojanshala_slips ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1",
+    );
+  if (!bhojanshalaSlipColumns.some((column) => column.name === "payment_mode"))
+    db.execSync(
+      "ALTER TABLE bhojanshala_slips ADD COLUMN payment_mode TEXT NOT NULL DEFAULT 'Online'",
     );
   const orderItemColumns = db.getAllSync<{ name: string }>(
     "PRAGMA table_info(order_items)",
@@ -235,6 +241,8 @@ function CanteenApp() {
   const [bhojanshalaCategory, setBhojanshalaCategory] =
     useState<BhojanshalaCategory>("Member");
   const [bhojanshalaQuantity, setBhojanshalaQuantity] = useState("0");
+  const [bhojanshalaPaymentMode, setBhojanshalaPaymentMode] = useState<BhojanshalaPaymentMode>("Online");
+  const [editBhojanshalaPaymentMode, setEditBhojanshalaPaymentMode] = useState<BhojanshalaPaymentMode>("Online");
   const [bhojanshalaPrices, setBhojanshalaPrices] = useState<
     Record<BhojanshalaMeal, string>
   >(() => ({
@@ -495,7 +503,7 @@ function CanteenApp() {
     );
     setHistoryBhojanshalaSlips(
       db.getAllSync<HistoryBhojanshalaSlip>(
-        "SELECT id, meal, category, price, quantity, created_at FROM bhojanshala_slips WHERE order_date = ? ORDER BY created_at DESC, id DESC",
+        "SELECT id, meal, category, price, quantity, payment_mode, created_at FROM bhojanshala_slips WHERE order_date = ? ORDER BY created_at DESC, id DESC",
         today(),
       ),
     );
@@ -1105,11 +1113,12 @@ function CanteenApp() {
     const price = bhojanshalaCategory === "Sevarthi" ? 0 : memberPrice;
     try {
       db.runSync(
-        "INSERT INTO bhojanshala_slips (meal, category, price, quantity, order_date, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bhojanshala_slips (meal, category, price, quantity, payment_mode, order_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         bhojanshalaMeal,
         bhojanshalaCategory,
         price,
         quantity,
+        bhojanshalaPaymentMode,
         today(),
         createdAt,
       );
@@ -1125,6 +1134,7 @@ function CanteenApp() {
       category: bhojanshalaCategory,
       price,
       quantity,
+      payment_mode: bhojanshalaPaymentMode,
       created_at: createdAt,
     });
     setBhojanshalaPreviewVisible(true);
@@ -1137,6 +1147,7 @@ function CanteenApp() {
     setEditBhojanshalaMeal(slip.meal);
     setEditBhojanshalaCategory(slip.category);
     setEditBhojanshalaQuantity(String(slip.quantity));
+    setEditBhojanshalaPaymentMode(slip.payment_mode);
   }
 
   function saveHistoryBhojanshalaSlip() {
@@ -1154,8 +1165,8 @@ function CanteenApp() {
     }
     const price = editBhojanshalaCategory === "Sevarthi" ? 0 : memberPrice;
     db.runSync(
-      "UPDATE bhojanshala_slips SET meal = ?, category = ?, price = ?, quantity = ? WHERE id = ?",
-      editBhojanshalaMeal, editBhojanshalaCategory, price, quantity, editingBhojanshalaSlip.id,
+      "UPDATE bhojanshala_slips SET meal = ?, category = ?, price = ?, quantity = ?, payment_mode = ? WHERE id = ?",
+      editBhojanshalaMeal, editBhojanshalaCategory, price, quantity, editBhojanshalaPaymentMode, editingBhojanshalaSlip.id,
     );
     setEditingBhojanshalaSlip(null);
     refreshHistory();
@@ -1521,6 +1532,26 @@ function CanteenApp() {
               ),
             )}
           </View>
+          <Text style={s.fieldLabel}>Payment mode</Text>
+          <View style={s.paymentModeRow}>
+            {(["Online", "Cash"] as BhojanshalaPaymentMode[]).map((mode) => {
+              const selected = bhojanshalaPaymentMode === mode;
+              return (
+                <TouchableOpacity
+                  key={mode}
+                  style={s.paymentModeOption}
+                  onPress={() => setBhojanshalaPaymentMode(mode)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                >
+                  <View style={[s.radioOuter, selected && s.radioOuterSelected]}>
+                    {selected && <View style={s.radioInner} />}
+                  </View>
+                  <Text style={s.paymentModeText}>{mode}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
           <Text style={s.fieldLabel}>Number of meals</Text>
           <TextInput
             value={bhojanshalaQuantity}
@@ -1710,7 +1741,7 @@ function CanteenApp() {
                     <View style={s.totalRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={s.orderToken}>{slip.meal} · {slip.category}</Text>
-                        <Text style={s.itemPrice}>{new Date(slip.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+                        <Text style={s.itemPrice}>{slip.payment_mode} · {new Date(slip.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
                       </View>
                       <Text style={s.orderTotal}>{slip.quantity} meal{slip.quantity === 1 ? "" : "s"}</Text>
                     </View>
@@ -2278,6 +2309,26 @@ function CanteenApp() {
                 </TouchableOpacity>
               ))}
             </View>
+            <Text style={s.fieldLabel}>Payment mode</Text>
+            <View style={s.paymentModeRow}>
+              {(["Online", "Cash"] as BhojanshalaPaymentMode[]).map((mode) => {
+                const selected = editBhojanshalaPaymentMode === mode;
+                return (
+                  <TouchableOpacity
+                    key={mode}
+                    style={s.paymentModeOption}
+                    onPress={() => setEditBhojanshalaPaymentMode(mode)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                  >
+                    <View style={[s.radioOuter, selected && s.radioOuterSelected]}>
+                      {selected && <View style={s.radioInner} />}
+                    </View>
+                    <Text style={s.paymentModeText}>{mode}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <Text style={s.fieldLabel}>Number of meals</Text>
             <TextInput value={editBhojanshalaQuantity} onChangeText={setEditBhojanshalaQuantity} keyboardType="number-pad" style={s.input} />
             <View style={s.dialogButtons}>
@@ -2429,6 +2480,9 @@ function CanteenApp() {
                 </Text>
                 <Text style={s.bhojanshalaCategoryText}>
                   {bhojanshalaSlip.category.toUpperCase()}
+                </Text>
+                <Text style={s.receiptKind}>
+                  PAYMENT: {bhojanshalaSlip.payment_mode.toUpperCase()}
                 </Text>
                 <View style={s.receiptDivider} />
                 <Text style={s.receiptKind}>QUANTITY</Text>
@@ -3118,6 +3172,27 @@ const s = StyleSheet.create({
     textAlign: "center",
   },
   bhojanshalaOptionTextActive: { color: "#fff" },
+  paymentModeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 24,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    marginBottom: 12,
+  },
+  paymentModeOption: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40 },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#7b887e",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioOuterSelected: { borderColor: "#287243" },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#287243" },
+  paymentModeText: { color: "#24372a", fontSize: 15, fontWeight: "600" },
   receiptPaper: {
     backgroundColor: "#fff",
     borderRadius: 8,
