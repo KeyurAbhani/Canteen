@@ -43,6 +43,23 @@ type BhojanshalaCounts = Record<
   Record<BhojanshalaCategory, number>
 >;
 type BhojanshalaPaymentCounts = Record<BhojanshalaPaymentMode, number>;
+type BhojanshalaMealSales = Record<
+  BhojanshalaMeal,
+  {
+    memberCount: number;
+    memberRevenue: number;
+    onlineCount: number;
+    onlineRevenue: number;
+    cashCount: number;
+    cashRevenue: number;
+    sevarthiCount: number;
+  }
+>;
+const emptyBhojanshalaMealSales = (): BhojanshalaMealSales => ({
+  Breakfast: { memberCount: 0, memberRevenue: 0, onlineCount: 0, onlineRevenue: 0, cashCount: 0, cashRevenue: 0, sevarthiCount: 0 },
+  Lunch: { memberCount: 0, memberRevenue: 0, onlineCount: 0, onlineRevenue: 0, cashCount: 0, cashRevenue: 0, sevarthiCount: 0 },
+  Dinner: { memberCount: 0, memberRevenue: 0, onlineCount: 0, onlineRevenue: 0, cashCount: 0, cashRevenue: 0, sevarthiCount: 0 },
+});
 type MenuItem = {
   id: number;
   name: string;
@@ -88,6 +105,7 @@ type AppTab =
   | "menu"
   | "inventory"
   | "report"
+  | "bhojanshalaSales"
   | "analysis"
   | "printer";
 const stockItems: PurchaseItem[] = [
@@ -206,6 +224,10 @@ function CanteenApp() {
     useState<BhojanshalaCounts>(emptyBhojanshalaCounts);
   const [bhojanshalaPaymentCounts, setBhojanshalaPaymentCounts] =
     useState<BhojanshalaPaymentCounts>({ Online: 0, Cash: 0 });
+  const [bhojanshalaSalesDate, setBhojanshalaSalesDate] = useState(today());
+  const [loadedBhojanshalaSalesDate, setLoadedBhojanshalaSalesDate] = useState(today());
+  const [bhojanshalaMealSales, setBhojanshalaMealSales] =
+    useState<BhojanshalaMealSales>(emptyBhojanshalaMealSales);
   const [historyOrders, setHistoryOrders] = useState<HistoryOrder[]>([]);
   const [historyBhojanshalaSlips, setHistoryBhojanshalaSlips] = useState<HistoryBhojanshalaSlip[]>([]);
   const [editingBhojanshalaSlip, setEditingBhojanshalaSlip] = useState<HistoryBhojanshalaSlip | null>(null);
@@ -447,6 +469,7 @@ function CanteenApp() {
         });
       refreshMenu();
       refreshReport(today());
+      refreshBhojanshalaSales(today());
       refreshHistory();
       refreshPurchases();
       refreshRangeReport(`${today().slice(0, 8)}01`, today());
@@ -502,6 +525,38 @@ function CanteenApp() {
     }
     setBhojanshalaPaymentCounts(paymentCounts);
     setLoadedReportDate(day);
+  }
+  function refreshBhojanshalaSales(day: string) {
+    const meals = emptyBhojanshalaMealSales();
+    const savedRows = db.getAllSync<{
+      meal: BhojanshalaMeal;
+      category: BhojanshalaCategory;
+      payment_mode: BhojanshalaPaymentMode;
+      quantity: number;
+      revenue: number;
+    }>(
+      "SELECT meal, category, payment_mode, COALESCE(SUM(quantity), 0) AS quantity, COALESCE(SUM(price * quantity), 0) AS revenue FROM bhojanshala_slips WHERE order_date = ? GROUP BY meal, category, payment_mode",
+      day,
+    );
+    for (const row of savedRows) {
+      const meal = meals[row.meal];
+      if (!meal) continue;
+      if (row.category === "Sevarthi") {
+        meal.sevarthiCount += row.quantity;
+      } else if (row.category === "Member") {
+        meal.memberCount += row.quantity;
+        meal.memberRevenue += row.revenue;
+        if (row.payment_mode === "Online") {
+          meal.onlineCount += row.quantity;
+          meal.onlineRevenue += row.revenue;
+        } else if (row.payment_mode === "Cash") {
+          meal.cashCount += row.quantity;
+          meal.cashRevenue += row.revenue;
+        }
+      }
+    }
+    setBhojanshalaMealSales(meals);
+    setLoadedBhojanshalaSalesDate(day);
   }
   function refreshHistory() {
     const saved = db.getAllSync<SavedOrder>(
@@ -1156,6 +1211,7 @@ function CanteenApp() {
     });
     setBhojanshalaPreviewVisible(true);
     refreshReport(loadedReportDate);
+    refreshBhojanshalaSales(bhojanshalaSalesDate);
     refreshHistory();
   }
 
@@ -1188,6 +1244,7 @@ function CanteenApp() {
     setEditingBhojanshalaSlip(null);
     refreshHistory();
     refreshReport(loadedReportDate);
+    refreshBhojanshalaSales(bhojanshalaSalesDate);
   }
 
   function cancelBhojanshalaSlip(slip: HistoryBhojanshalaSlip) {
@@ -1197,6 +1254,7 @@ function CanteenApp() {
         db.runSync("DELETE FROM bhojanshala_slips WHERE id = ?", slip.id);
         refreshHistory();
         refreshReport(loadedReportDate);
+        refreshBhojanshalaSales(bhojanshalaSalesDate);
       } },
     ]);
   }
@@ -1369,6 +1427,8 @@ function CanteenApp() {
               ? "New order"
               : tab === "bhojanshala"
                 ? "Bhojanshala"
+                : tab === "bhojanshalaSales"
+                  ? "Bhojanshala sales"
                 : tab === "history"
                 ? "Today’s history"
                 : tab === "menu"
@@ -1397,6 +1457,7 @@ function CanteenApp() {
           [
             "order",
             "bhojanshala",
+            "bhojanshalaSales",
             "history",
             "menu",
             "inventory",
@@ -1415,6 +1476,8 @@ function CanteenApp() {
                 ? "Order"
                 : key === "bhojanshala"
                   ? "Bhojanshala"
+                  : key === "bhojanshalaSales"
+                    ? "Bhoj. Sales"
                   : key === "history"
                   ? "History"
                   : key === "menu"
@@ -2095,6 +2158,66 @@ function CanteenApp() {
           </ScrollView>
           <Text style={s.faintFooter}>!! દેવેન ના જય સચ્ચિદાનંદ !!</Text>
         </View>
+      )}
+      {tab === "bhojanshalaSales" && (
+        <KeyboardAvoidingView
+          style={s.body}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+          >
+            <Text style={s.sectionTitle}>Bhojanshala sales detail</Text>
+            <Text style={s.fieldLabel}>Report date (YYYY-MM-DD)</Text>
+            <View style={s.dateRow}>
+              <TextInput
+                value={bhojanshalaSalesDate}
+                onChangeText={setBhojanshalaSalesDate}
+                style={s.dateInput}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={s.smallPrimary}
+                onPress={() => refreshBhojanshalaSales(bhojanshalaSalesDate)}
+              >
+                <Text style={s.primaryText}>View</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={s.hint}>Meal quantities include the number printed on each slip.</Text>
+            {(["Breakfast", "Lunch", "Dinner"] as BhojanshalaMeal[]).map((meal) => {
+              const sales = bhojanshalaMealSales[meal];
+              return (
+                <View key={meal} style={s.bhojanshalaReportCard}>
+                  <Text style={s.bhojanshalaMealSalesTitle}>{meal}</Text>
+                  <View style={s.bhojanshalaSalesLine}>
+                    <Text style={s.bhojanshalaSalesLabel}>Members · {sales.memberCount} meals</Text>
+                    <Text style={s.bhojanshalaSalesAmount}>{money(sales.memberRevenue)}</Text>
+                  </View>
+                  <View style={s.bhojanshalaSalesPaymentRow}>
+                    <View style={s.bhojanshalaSalesPayment}>
+                      <Text style={s.bhojanshalaSalesLabel}>Online</Text>
+                      <Text style={s.bhojanshalaSalesValue}>{sales.onlineCount} meals</Text>
+                      <Text style={s.bhojanshalaSalesAmount}>{money(sales.onlineRevenue)}</Text>
+                    </View>
+                    <View style={s.bhojanshalaSalesPayment}>
+                      <Text style={s.bhojanshalaSalesLabel}>Cash</Text>
+                      <Text style={s.bhojanshalaSalesValue}>{sales.cashCount} meals</Text>
+                      <Text style={s.bhojanshalaSalesAmount}>{money(sales.cashRevenue)}</Text>
+                    </View>
+                  </View>
+                  <View style={[s.bhojanshalaSalesLine, s.bhojanshalaSalesSevarthi]}>
+                    <Text style={s.bhojanshalaSalesLabel}>Sevarthi</Text>
+                    <Text style={s.bhojanshalaSalesValue}>{sales.sevarthiCount} meals</Text>
+                  </View>
+                </View>
+              );
+            })}
+            <Text style={s.itemPrice}>Showing report for {loadedBhojanshalaSalesDate}</Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
       )}
       {tab === "printer" && (
         <KeyboardAvoidingView
@@ -2828,6 +2951,37 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e5e9e3",
   },
+  bhojanshalaMealSalesTitle: {
+    color: "#24372a",
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 10,
+  },
+  bhojanshalaSalesLine: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  bhojanshalaSalesLabel: { color: "#536056", fontSize: 14, fontWeight: "700" },
+  bhojanshalaSalesValue: { color: "#29382d", fontSize: 14, fontWeight: "700" },
+  bhojanshalaSalesAmount: { color: "#28643b", fontSize: 14, fontWeight: "800" },
+  bhojanshalaSalesPaymentRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#eef0ec",
+  },
+  bhojanshalaSalesPayment: {
+    flex: 1,
+    backgroundColor: "#f7f8f6",
+    padding: 10,
+    borderRadius: 10,
+    gap: 4,
+  },
+  bhojanshalaSalesSevarthi: { marginTop: 4 },
   bhojanshalaCountRow: {
     flexDirection: "row",
     alignItems: "center",
