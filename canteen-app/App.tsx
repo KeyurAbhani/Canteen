@@ -19,6 +19,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
   makeOrderPrintJob,
   makeBhojanshalaPrintJob,
+  makeBhojanshalaSalesPrintJob,
   makePrinterTestJob,
   makeReportPrintJob,
   sendBluetoothPrintJob,
@@ -256,6 +257,7 @@ function CanteenApp() {
   const [purchaseHistory, setPurchaseHistory] = useState<PurchaseRow[]>([]);
   const [loadedReportDate, setLoadedReportDate] = useState(today());
   const [reportPreviewVisible, setReportPreviewVisible] = useState(false);
+  const [bhojanshalaSalesPreviewVisible, setBhojanshalaSalesPreviewVisible] = useState(false);
   const [addingToOrder, setAddingToOrder] = useState<number | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
@@ -1130,6 +1132,34 @@ function CanteenApp() {
         "Printing failed",
         `${message}\n\nCheck the printer connection and settings in the Printer tab.`,
       );
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  async function printBhojanshalaSales() {
+    if (printing) return;
+    if (printerMode === "bluetooth" && !bluetoothDeviceId) {
+      Alert.alert("Set up the printer first", "Open the Printer tab and select a Bluetooth printer.");
+      return;
+    }
+    if (printerMode === "wifi" && (!printerHost.trim() || !Number.isInteger(Number(printerPort)) || Number(printerPort) < 1 || Number(printerPort) > 65535)) {
+      Alert.alert("Set up the printer first", "Open the Printer tab and enter a valid printer IP address and port.");
+      return;
+    }
+    setPrinting(true);
+    try {
+      await sendToSelectedPrinter(makeBhojanshalaSalesPrintJob({
+        date: loadedBhojanshalaSalesDate,
+        meals: (["Breakfast", "Lunch", "Dinner"] as BhojanshalaMeal[]).map((meal) => ({
+          meal,
+          ...bhojanshalaMealSales[meal],
+        })),
+      }));
+      Alert.alert("Report printed", "The Bhojanshala sales report was sent to the printer.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      Alert.alert("Printing failed", `${message}\n\nCheck the printer connection and settings in the Printer tab.`);
     } finally {
       setPrinting(false);
     }
@@ -2216,6 +2246,12 @@ function CanteenApp() {
               );
             })}
             <Text style={s.itemPrice}>Showing report for {loadedBhojanshalaSalesDate}</Text>
+            <TouchableOpacity
+              style={[s.secondary, s.printerAction]}
+              onPress={() => setBhojanshalaSalesPreviewVisible(true)}
+            >
+              <Text style={s.secondaryText}>Preview report</Text>
+            </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
       )}
@@ -2616,6 +2652,59 @@ function CanteenApp() {
         </View>
       </Modal>
       <Modal
+        visible={bhojanshalaSalesPreviewVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBhojanshalaSalesPreviewVisible(false)}
+      >
+        <View style={s.scrim}>
+          <View style={s.receiptDialog}>
+            <View style={s.receiptHeader}>
+              <Text style={s.receiptTitle}>Bhojanshala sales preview</Text>
+              <TouchableOpacity onPress={() => setBhojanshalaSalesPreviewVisible(false)}>
+                <Text style={s.actionText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={s.receiptPaper}>
+              <Text style={s.receiptBrand}>TRIMANDIR</Text>
+              <Text style={s.receiptKind}>BHOJANSHALA SALES</Text>
+              <Text style={s.receiptDate}>{loadedBhojanshalaSalesDate}</Text>
+              {(["Breakfast", "Lunch", "Dinner"] as BhojanshalaMeal[]).map((meal) => {
+                const sales = bhojanshalaMealSales[meal];
+                return (
+                  <View key={meal}>
+                    <View style={s.receiptDivider} />
+                    <Text style={s.receiptKind}>{meal.toUpperCase()}</Text>
+                    <View style={s.receiptLine}>
+                      <Text style={s.receiptItem}>Members · {sales.memberCount}</Text>
+                      <Text style={s.receiptAmount}>{money(sales.memberRevenue)}</Text>
+                    </View>
+                    <View style={s.receiptLine}>
+                      <Text style={s.receiptItem}>Online · {sales.onlineCount}</Text>
+                      <Text style={s.receiptAmount}>{money(sales.onlineRevenue)}</Text>
+                    </View>
+                    <View style={s.receiptLine}>
+                      <Text style={s.receiptItem}>Cash · {sales.cashCount}</Text>
+                      <Text style={s.receiptAmount}>{money(sales.cashRevenue)}</Text>
+                    </View>
+                    <View style={s.receiptLine}>
+                      <Text style={s.receiptItem}>Sevarthi · {sales.sevarthiCount}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              style={[s.primary, s.printerAction, printing && s.disabled]}
+              disabled={printing}
+              onPress={printBhojanshalaSales}
+            >
+              <Text style={s.primaryText}>{printing ? "Printing report…" : "Print report"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <Modal
         visible={bhojanshalaPreviewVisible && bhojanshalaSlip !== null}
         transparent
         animationType="slide"
@@ -2633,7 +2722,7 @@ function CanteenApp() {
             </View>
             {bhojanshalaSlip && (
               <ScrollView style={s.receiptPaper}>
-                <Text style={s.receiptBrand}>TRIMANDIR CANTEEN</Text>
+                <Text style={s.receiptBrand}>TRIMANDIR</Text>
                 <Text style={s.receiptKind}>BHOJANSHALA</Text>
                 <View style={s.receiptDivider} />
                 <Text style={s.bhojanshalaMealText}>

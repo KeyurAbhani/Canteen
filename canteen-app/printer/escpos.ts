@@ -37,6 +37,20 @@ export type PrintableBhojanshalaSlip = {
   created_at: string;
 };
 
+export type PrintableBhojanshalaSales = {
+  date: string;
+  meals: Array<{
+    meal: string;
+    memberCount: number;
+    memberRevenue: number;
+    onlineCount: number;
+    onlineRevenue: number;
+    cashCount: number;
+    cashRevenue: number;
+    sevarthiCount: number;
+  }>;
+};
+
 const ESC = 0x1b;
 const GS = 0x1d;
 const WIDTH = 48;
@@ -162,7 +176,7 @@ export function makePrinterTestJob() {
 export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
   return Buffer.concat([
     startSlip(),
-    centered('TRIMANDIR CANTEEN'),
+    centered('TRIMANDIR'),
     centered('BHOJANSHALA'),
     separator(),
     command(ESC, 0x45, 0x01),
@@ -180,6 +194,30 @@ export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
       ? [centered(amount(slip.price * slip.quantity))]
       : []),
     centered(new Date(slip.created_at).toLocaleString()),
+    separator(),
+    cut(),
+  ]);
+}
+
+export function makeBhojanshalaSalesPrintJob(report: PrintableBhojanshalaSales) {
+  const mealLines = report.meals.flatMap((meal) => [
+    separator(),
+    command(ESC, 0x45, 0x01),
+    centered(meal.meal.toUpperCase()),
+    command(ESC, 0x45, 0x00),
+    line(`MEMBERS: ${meal.memberCount}  ${amount(meal.memberRevenue)}`),
+    line(`ONLINE: ${meal.onlineCount}  ${amount(meal.onlineRevenue)}`),
+    line(`CASH: ${meal.cashCount}  ${amount(meal.cashRevenue)}`),
+    line(`SEVARTHI: ${meal.sevarthiCount}`),
+  ]);
+  return Buffer.concat([
+    startSlip(),
+    command(ESC, 0x45, 0x01),
+    centered('TRIMANDIR'),
+    command(ESC, 0x45, 0x00),
+    centered('BHOJANSHALA SALES'),
+    line(`DATE: ${report.date}`),
+    ...mealLines,
     separator(),
     cut(),
   ]);
