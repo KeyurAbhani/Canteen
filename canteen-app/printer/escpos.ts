@@ -20,12 +20,6 @@ export type PrintableReport = {
   totalSales: number;
   averageOrderAmount: number;
   items: Array<{ name: string; quantity: number; revenue: number }>;
-  bhojanshalaCounts: Array<{
-    meal: string;
-    members: number;
-    sevarthis: number;
-  }>;
-  bhojanshalaPaymentCounts: { Online: number; Cash: number };
 };
 
 export type PrintableBhojanshalaSlip = {
@@ -242,14 +236,6 @@ export function makeReportPrintJob(report: PrintableReport) {
     line(`ORDERS: ${report.orders}`),
     amountRow('TOTAL SALES', report.totalSales),
     amountRow('AVERAGE ORDER', report.averageOrderAmount),
-    separator(),
-    centered('BHOJANSHALA COUNTS'),
-    ...report.bhojanshalaCounts.map(({ meal, members, sevarthis }) =>
-      line(`${meal.padEnd(14)}MEM ${members}  SEV ${sevarthis}`),
-    ),
-    separator(),
-    line(`MEMBER MEALS ONLINE: ${report.bhojanshalaPaymentCounts.Online}`),
-    line(`MEMBER MEALS CASH: ${report.bhojanshalaPaymentCounts.Cash}`),
     gujaratiReportFooter(),
     cut(),
   ]);

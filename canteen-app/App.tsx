@@ -38,11 +38,6 @@ type BhojanshalaSlip = {
   created_at: string;
 };
 type HistoryBhojanshalaSlip = BhojanshalaSlip & { id: number };
-type BhojanshalaCounts = Record<
-  BhojanshalaMeal,
-  Record<BhojanshalaCategory, number>
->;
-type BhojanshalaPaymentCounts = Record<BhojanshalaPaymentMode, number>;
 type BhojanshalaMealSales = Record<
   BhojanshalaMeal,
   {
@@ -129,11 +124,6 @@ const bhojanshalaPriceSettingKeys: Record<BhojanshalaMeal, string> = {
   Lunch: "bhojanshala_price_lunch",
   Dinner: "bhojanshala_price_dinner",
 };
-const emptyBhojanshalaCounts = (): BhojanshalaCounts => ({
-  Breakfast: { Member: 0, Sevarthi: 0 },
-  Lunch: { Member: 0, Sevarthi: 0 },
-  Dinner: { Member: 0, Sevarthi: 0 },
-});
 const menuImages: Record<string, number> = {
   bhel: require("./assets/menu/bhel.png"),
   bhajia: require("./assets/menu/bhajia.png"),
@@ -232,10 +222,6 @@ function CanteenApp() {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<Record<number, number>>({});
   const [rows, setRows] = useState<ReportRow[]>([]);
-  const [bhojanshalaCounts, setBhojanshalaCounts] =
-    useState<BhojanshalaCounts>(emptyBhojanshalaCounts);
-  const [bhojanshalaPaymentCounts, setBhojanshalaPaymentCounts] =
-    useState<BhojanshalaPaymentCounts>({ Online: 0, Cash: 0 });
   const [bhojanshalaSalesDate, setBhojanshalaSalesDate] = useState(today());
   const [loadedBhojanshalaSalesDate, setLoadedBhojanshalaSalesDate] = useState(today());
   const [bhojanshalaMealSales, setBhojanshalaMealSales] =
@@ -510,32 +496,6 @@ function CanteenApp() {
         day,
       )?.n ?? 0,
     );
-    const counts = emptyBhojanshalaCounts();
-    const savedCounts = db.getAllSync<{
-      meal: BhojanshalaMeal;
-      category: BhojanshalaCategory;
-      count: number;
-    }>(
-      "SELECT meal, category, COALESCE(SUM(quantity), 0) AS count FROM bhojanshala_slips WHERE order_date = ? GROUP BY meal, category",
-      day,
-    );
-    for (const row of savedCounts) {
-      if (counts[row.meal]) counts[row.meal][row.category] = row.count;
-    }
-    setBhojanshalaCounts(counts);
-    const savedPaymentCounts = db.getAllSync<{
-      payment_mode: BhojanshalaPaymentMode;
-      count: number;
-    }>(
-      "SELECT payment_mode, COALESCE(SUM(quantity), 0) AS count FROM bhojanshala_slips WHERE order_date = ? AND category = 'Member' GROUP BY payment_mode",
-      day,
-    );
-    const paymentCounts: BhojanshalaPaymentCounts = { Online: 0, Cash: 0 };
-    for (const row of savedPaymentCounts) {
-      if (row.payment_mode in paymentCounts)
-        paymentCounts[row.payment_mode] = row.count;
-    }
-    setBhojanshalaPaymentCounts(paymentCounts);
     setLoadedReportDate(day);
   }
   function refreshBhojanshalaSales(day: string) {
@@ -1089,14 +1049,6 @@ function CanteenApp() {
           totalSales: reportTotal,
           averageOrderAmount,
           items: rows,
-          bhojanshalaCounts: (["Breakfast", "Lunch", "Dinner"] as const).map(
-            (meal) => ({
-              meal,
-              members: bhojanshalaCounts[meal].Member,
-              sevarthis: bhojanshalaCounts[meal].Sevarthi,
-            }),
-          ),
-          bhojanshalaPaymentCounts,
         }),
       );
     } catch (error) {
@@ -2100,58 +2052,6 @@ function CanteenApp() {
             <Text style={s.summaryLabel}>Average order amount</Text>
             <Text style={s.summaryValue}>{money(averageOrderAmount)}</Text>
           </View>
-          <View style={s.bhojanshalaReportCard}>
-            <Text style={s.sectionTitle}>Bhojanshala slips</Text>
-            <View style={s.bhojanshalaCountRow}>
-              <Text style={[s.bhojanshalaCountCell, { flex: 1 }]}>Meal</Text>
-              <Text style={s.bhojanshalaCountCell}>Members</Text>
-              <Text style={s.bhojanshalaCountCell}>Sevarthi</Text>
-            </View>
-            {(["Breakfast", "Lunch", "Dinner"] as BhojanshalaMeal[]).map(
-              (meal) => (
-                <View key={meal} style={s.bhojanshalaCountRow}>
-                  <Text style={[s.bhojanshalaCountValue, { flex: 1 }]}>
-                    {meal}
-                  </Text>
-                  <Text style={s.bhojanshalaCountValue}>
-                    {bhojanshalaCounts[meal].Member}
-                  </Text>
-                  <Text style={s.bhojanshalaCountValue}>
-                    {bhojanshalaCounts[meal].Sevarthi}
-                  </Text>
-                </View>
-              ),
-            )}
-            <View style={s.bhojanshalaCountTotals}>
-              <Text style={s.bhojanshalaCountTotal}>
-                Members: {(
-                  ["Breakfast", "Lunch", "Dinner"] as BhojanshalaMeal[]
-                ).reduce(
-                  (total, meal) => total + bhojanshalaCounts[meal].Member,
-                  0,
-                )}
-              </Text>
-              <Text style={s.bhojanshalaCountTotal}>
-                Sevarthi: {(
-                  ["Breakfast", "Lunch", "Dinner"] as BhojanshalaMeal[]
-                ).reduce(
-                  (total, meal) => total + bhojanshalaCounts[meal].Sevarthi,
-                  0,
-                )}
-              </Text>
-            </View>
-            <View style={[s.bhojanshalaCountTotals, s.paymentCountSummary]}>
-              <Text style={s.paymentCountHeading}>Member meals by payment</Text>
-              <View style={s.paymentCountValues}>
-                <Text style={s.bhojanshalaCountTotal}>
-                  Online: {bhojanshalaPaymentCounts.Online}
-                </Text>
-                <Text style={s.bhojanshalaCountTotal}>
-                  Cash: {bhojanshalaPaymentCounts.Cash}
-                </Text>
-              </View>
-            </View>
-          </View>
           <TouchableOpacity
             style={[s.secondary, s.printerAction]}
             onPress={() => setReportPreviewVisible(true)}
@@ -2589,19 +2489,6 @@ function CanteenApp() {
               {!rows.length && (
                 <Text style={s.hint}>No orders recorded for this date.</Text>
               )}
-              <View style={s.receiptDivider} />
-              <Text style={s.receiptKind}>BHOJANSHALA COUNTS</Text>
-              {(["Breakfast", "Lunch", "Dinner"] as BhojanshalaMeal[]).map(
-                (meal) => (
-                  <View key={meal} style={s.receiptLine}>
-                    <Text style={s.receiptItem}>{meal}</Text>
-                    <Text style={s.receiptAmount}>
-                      M {bhojanshalaCounts[meal].Member} · S{" "}
-                      {bhojanshalaCounts[meal].Sevarthi}
-                    </Text>
-                  </View>
-                ),
-              )}
               <Text style={s.faintFooter}>!! દેવેન ના જય સચ્ચિદાનંદ !!</Text>
             </ScrollView>
             <TouchableOpacity
@@ -3036,51 +2923,6 @@ const s = StyleSheet.create({
     gap: 4,
   },
   bhojanshalaSalesSevarthi: { marginTop: 4 },
-  bhojanshalaCountRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderColor: "#eef0ec",
-  },
-  bhojanshalaCountCell: {
-    width: 78,
-    textAlign: "right",
-    color: "#718075",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  bhojanshalaCountValue: {
-    width: 78,
-    textAlign: "right",
-    color: "#29382d",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  bhojanshalaCountTotals: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingTop: 10,
-  },
-  bhojanshalaCountTotal: {
-    color: "#28643b",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  paymentCountSummary: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-    borderTopWidth: 1,
-    borderColor: "#eef0ec",
-    marginTop: 8,
-  },
-  paymentCountHeading: { color: "#718075", fontSize: 12, fontWeight: "700" },
-  paymentCountValues: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-    paddingTop: 6,
-  },
   list: { paddingBottom: 16 },
   itemRow: {
     flexDirection: "row",
