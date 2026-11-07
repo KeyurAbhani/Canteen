@@ -200,8 +200,8 @@ export function makeBhojanshalaSalesPrintJob(report: PrintableBhojanshalaSales) 
     centered(meal.meal.toUpperCase()),
     command(ESC, 0x45, 0x00),
     line(`MEMBERS: ${meal.memberCount}  ${amount(meal.memberRevenue)}`),
-    line(`ONLINE: ${meal.onlineCount}  ${amount(meal.onlineRevenue)}`),
-    line(`CASH: ${meal.cashCount}  ${amount(meal.cashRevenue)}`),
+    line(`  - ONLINE: ${meal.onlineCount}  ${amount(meal.onlineRevenue)}`),
+    line(`  - CASH: ${meal.cashCount}  ${amount(meal.cashRevenue)}`),
     line(`SEVARTHI: ${meal.sevarthiCount}`),
   ]);
   return Buffer.concat([

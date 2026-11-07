@@ -2117,15 +2117,13 @@ function CanteenApp() {
                     <Text style={s.bhojanshalaSalesLabel}>Members · {sales.memberCount} meals</Text>
                     <Text style={s.bhojanshalaSalesAmount}>{money(sales.memberRevenue)}</Text>
                   </View>
-                  <View style={s.bhojanshalaSalesPaymentRow}>
-                    <View style={s.bhojanshalaSalesPayment}>
-                      <Text style={s.bhojanshalaSalesLabel}>Online</Text>
-                      <Text style={s.bhojanshalaSalesValue}>{sales.onlineCount} meals</Text>
+                  <View style={s.bhojanshalaSalesNestedRows}>
+                    <View style={s.bhojanshalaSalesNestedLine}>
+                      <Text style={s.bhojanshalaSalesNestedLabel}>• Online · {sales.onlineCount} meals</Text>
                       <Text style={s.bhojanshalaSalesAmount}>{money(sales.onlineRevenue)}</Text>
                     </View>
-                    <View style={s.bhojanshalaSalesPayment}>
-                      <Text style={s.bhojanshalaSalesLabel}>Cash</Text>
-                      <Text style={s.bhojanshalaSalesValue}>{sales.cashCount} meals</Text>
+                    <View style={s.bhojanshalaSalesNestedLine}>
+                      <Text style={s.bhojanshalaSalesNestedLabel}>• Cash · {sales.cashCount} meals</Text>
                       <Text style={s.bhojanshalaSalesAmount}>{money(sales.cashRevenue)}</Text>
                     </View>
                   </View>
@@ -2531,12 +2529,12 @@ function CanteenApp() {
                       <Text style={s.receiptItem}>Members · {sales.memberCount}</Text>
                       <Text style={s.receiptAmount}>{money(sales.memberRevenue)}</Text>
                     </View>
-                    <View style={s.receiptLine}>
-                      <Text style={s.receiptItem}>Online · {sales.onlineCount}</Text>
+                    <View style={[s.receiptLine, s.receiptNestedLine]}>
+                      <Text style={s.receiptItem}>• Online · {sales.onlineCount}</Text>
                       <Text style={s.receiptAmount}>{money(sales.onlineRevenue)}</Text>
                     </View>
-                    <View style={s.receiptLine}>
-                      <Text style={s.receiptItem}>Cash · {sales.cashCount}</Text>
+                    <View style={[s.receiptLine, s.receiptNestedLine]}>
+                      <Text style={s.receiptItem}>• Cash · {sales.cashCount}</Text>
                       <Text style={s.receiptAmount}>{money(sales.cashRevenue)}</Text>
                     </View>
                     <View style={s.receiptLine}>
@@ -2907,21 +2905,24 @@ const s = StyleSheet.create({
   bhojanshalaSalesLabel: { color: "#536056", fontSize: 14, fontWeight: "700" },
   bhojanshalaSalesValue: { color: "#29382d", fontSize: 14, fontWeight: "700" },
   bhojanshalaSalesAmount: { color: "#28643b", fontSize: 14, fontWeight: "800" },
-  bhojanshalaSalesPaymentRow: {
+  bhojanshalaSalesNestedRows: {
+    marginLeft: 16,
+    paddingLeft: 10,
+    borderLeftWidth: 2,
+    borderColor: "#e5e9e3",
+  },
+  bhojanshalaSalesNestedLine: {
     flexDirection: "row",
-    gap: 10,
-    paddingVertical: 6,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: "#eef0ec",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 4,
   },
-  bhojanshalaSalesPayment: {
-    flex: 1,
-    backgroundColor: "#f7f8f6",
-    padding: 10,
-    borderRadius: 10,
-    gap: 4,
+  bhojanshalaSalesNestedLabel: {
+    color: "#718075",
+    fontSize: 13,
+    fontWeight: "600",
   },
+  receiptNestedLine: { marginLeft: 16, paddingVertical: 3 },
   bhojanshalaSalesSevarthi: { marginTop: 4 },
   list: { paddingBottom: 16 },
   itemRow: {
