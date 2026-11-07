@@ -26,7 +26,6 @@ import {
   sendPrintJob,
 } from "./printer/escpos";
 
-type MenuMealType = "breakfast" | "breakfast_sevarthi" | "lunch" | "dinner";
 type BhojanshalaMeal = "Breakfast" | "Lunch" | "Dinner";
 type BhojanshalaCategory = "Member" | "Sevarthi";
 type BhojanshalaPaymentMode = "Online" | "Cash";
@@ -66,7 +65,6 @@ type MenuItem = {
   name: string;
   price: number;
   active: number;
-  meal_type?: MenuMealType;
 };
 type ReportRow = { name: string; quantity: number; revenue: number };
 type SavedOrder = {
@@ -126,12 +124,6 @@ const stockItems: PurchaseItem[] = [
   { id: 14, name: "Puff", unit: "items" },
 ];
 const db = SQLite.openDatabaseSync("canteen.db");
-const menuMealLabels: Record<MenuMealType, string> = {
-  breakfast: "Breakfast",
-  breakfast_sevarthi: "Breakfast • Sevarthi",
-  lunch: "Lunch",
-  dinner: "Dinner",
-};
 const bhojanshalaPriceSettingKeys: Record<BhojanshalaMeal, string> = {
   Breakfast: "bhojanshala_price_breakfast",
   Lunch: "bhojanshala_price_lunch",
@@ -153,8 +145,6 @@ const menuImages: Record<string, number> = {
 const defaultMenuImage = require("./assets/menu/sandwich.png");
 const menuImageFor = (name: string) =>
   menuImages[name.trim().toLowerCase()] ?? defaultMenuImage;
-const mealTypeLabel = (mealType?: MenuMealType | null) =>
-  menuMealLabels[mealType ?? "lunch"] ?? menuMealLabels.lunch;
 const money = (value: number) => `₹${value.toFixed(2)}`;
 const displayPurchaseUnit = (unit: string) =>
   unit === "kg" ? "kg" : "Item number/packets";
@@ -240,7 +230,6 @@ function CanteenApp() {
   const [editItem, setEditItem] = useState<MenuItem | null>(null);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
-  const [mealType, setMealType] = useState<MenuMealType>("lunch");
   const [reportDate, setReportDate] = useState(today());
   const [rangeStart, setRangeStart] = useState(today().slice(0, 8) + "01");
   const [rangeEnd, setRangeEnd] = useState(today());
@@ -483,7 +472,7 @@ function CanteenApp() {
   function refreshMenu() {
     setMenu(
       db.getAllSync<MenuItem>(
-        "SELECT id, name, price, active, COALESCE(trim(meal_type), 'lunch') AS meal_type FROM menu_items WHERE active = 1 ORDER BY name COLLATE NOCASE",
+        "SELECT id, name, price, active FROM menu_items WHERE active = 1 ORDER BY name COLLATE NOCASE",
       ),
     );
   }
@@ -1293,7 +1282,6 @@ function CanteenApp() {
     setEditItem(item ?? null);
     setName(item?.name ?? "");
     setPrice(item ? String(item.price) : "");
-    setMealType(item?.meal_type ?? "lunch");
     setModal(true);
   }
   function saveMenuItem() {
@@ -1308,18 +1296,16 @@ function CanteenApp() {
     }
     if (editItem)
       db.runSync(
-        "UPDATE menu_items SET name = ?, price = ?, meal_type = ? WHERE id = ?",
+        "UPDATE menu_items SET name = ?, price = ? WHERE id = ?",
         n,
         p,
-        mealType,
         editItem.id,
       );
     else
       db.runSync(
-        "INSERT INTO menu_items (name, price, meal_type) VALUES (?, ?, ?)",
+        "INSERT INTO menu_items (name, price) VALUES (?, ?)",
         n,
         p,
-        mealType,
       );
     setModal(false);
     refreshMenu();
@@ -1454,22 +1440,22 @@ function CanteenApp() {
           <Text style={s.eyebrow}>TRIMANDIR CANTEEN</Text>
           <Text style={s.title}>
             {tab === "order"
-              ? "New order"
+              ? "Canteen"
               : tab === "bhojanshala"
                 ? "Bhojanshala"
                 : tab === "bhojanshalaSales"
-                  ? "Bhojanshala sales"
-                : tab === "history"
-                ? "Today’s history"
-                : tab === "menu"
-                  ? "Menu"
-                  : tab === "inventory"
-                    ? "Inventory"
-                    : tab === "analysis"
-                      ? "Cost analysis"
-                      : tab === "printer"
-                        ? "Printer setup"
-                        : "Sales report"}
+                  ? "Bhojanshala Sales"
+                  : tab === "history"
+                    ? "History"
+                    : tab === "menu"
+                      ? "Menu"
+                      : tab === "inventory"
+                        ? "Inventory"
+                        : tab === "analysis"
+                          ? "Cost"
+                          : tab === "printer"
+                            ? "Printer setup"
+                            : "Sales report"}
           </Text>
         </View>
         <View style={s.localBadge}>
@@ -1487,11 +1473,11 @@ function CanteenApp() {
           [
             "order",
             "bhojanshala",
-            "bhojanshalaSales",
             "history",
             "menu",
-            "inventory",
             "report",
+            "bhojanshalaSales",
+            "inventory",
             "analysis",
             "printer",
           ] as const
@@ -1503,22 +1489,22 @@ function CanteenApp() {
           >
             <Text style={[s.tabText, tab === key && s.tabTextActive]}>
               {key === "order"
-                ? "Order"
+                ? "Canteen"
                 : key === "bhojanshala"
                   ? "Bhojanshala"
-                  : key === "bhojanshalaSales"
-                    ? "Bhoj. Sales"
                   : key === "history"
-                  ? "History"
-                  : key === "menu"
-                    ? "Menu"
-                    : key === "inventory"
-                      ? "Inventory"
-                      : key === "analysis"
-                        ? "Cost analysis"
-                        : key === "printer"
-                          ? "Printer"
-                          : "Sales"}
+                    ? "History"
+                    : key === "menu"
+                      ? "Menu"
+                      : key === "report"
+                        ? "Sales"
+                        : key === "bhojanshalaSales"
+                          ? "Bhojanshala Sales"
+                          : key === "inventory"
+                            ? "Inventory"
+                            : key === "analysis"
+                              ? "Cost"
+                              : "Printer"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -1543,10 +1529,7 @@ function CanteenApp() {
                 />
                 <View style={{ flex: 1 }}>
                   <Text style={s.itemName}>{item.name}</Text>
-                  <Text style={s.itemPrice}>
-                    {mealTypeLabel(item.meal_type ?? "lunch")} ·{" "}
-                    {money(item.price)}
-                  </Text>
+                  <Text style={s.itemPrice}>{money(item.price)}</Text>
                 </View>
                 <TouchableOpacity
                   style={s.qtyButton}
@@ -1763,10 +1746,7 @@ function CanteenApp() {
                 />
                 <View style={{ flex: 1 }}>
                   <Text style={s.itemName}>{item.name}</Text>
-                  <Text style={s.itemPrice}>
-                    {mealTypeLabel(item.meal_type ?? "lunch")} ·{" "}
-                    {money(item.price)}
-                  </Text>
+                  <Text style={s.itemPrice}>{money(item.price)}</Text>
                 </View>
                 <TouchableOpacity
                   style={s.action}
@@ -2433,32 +2413,6 @@ function CanteenApp() {
               placeholder="e.g. Sandwich"
               style={s.input}
             />
-            <Text style={s.fieldLabel}>Category</Text>
-            <View style={s.copyTabs}>
-              {(
-                [
-                  "breakfast",
-                  "breakfast_sevarthi",
-                  "lunch",
-                  "dinner",
-                ] as MenuMealType[]
-              ).map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={[s.copyTab, mealType === type && s.copyTabActive]}
-                  onPress={() => setMealType(type)}
-                >
-                  <Text
-                    style={[
-                      s.copyTabText,
-                      mealType === type && s.copyTabTextActive,
-                    ]}
-                  >
-                    {mealTypeLabel(type)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
             <Text style={s.fieldLabel}>Price (₹)</Text>
             <TextInput
               value={price}
