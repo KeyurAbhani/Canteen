@@ -142,9 +142,30 @@ const menuImages: Record<string, number> = {
   sandwich: require("./assets/menu/sandwich.png"),
   vadapav: require("./assets/menu/vadapav.png"),
 };
-const defaultMenuImage = require("./assets/menu/sandwich.png");
 const menuImageFor = (name: string) =>
-  menuImages[name.trim().toLowerCase()] ?? defaultMenuImage;
+  menuImages[name.trim().toLowerCase()];
+function MenuThumbnail({ name }: { name: string }) {
+  const source = menuImageFor(name);
+  if (source) {
+    return (
+      <Image
+        source={source}
+        style={s.menuImage}
+        resizeMode="contain"
+        accessibilityLabel={`${name} photo`}
+      />
+    );
+  }
+  return (
+    <View
+      style={[s.menuImage, s.menuImagePlaceholder]}
+      accessible
+      accessibilityLabel={`${name} placeholder image`}
+    >
+      <Text style={s.menuPlaceholderCharacter}>🧑‍🍳</Text>
+    </View>
+  );
+}
 const money = (value: number) => `₹${value.toFixed(2)}`;
 const displayPurchaseUnit = (unit: string) =>
   unit === "kg" ? "kg" : "Item number/packets";
@@ -1521,12 +1542,7 @@ function CanteenApp() {
             contentContainerStyle={s.list}
             renderItem={({ item }) => (
               <View style={s.itemRow}>
-                <Image
-                  source={menuImageFor(item.name)}
-                  style={s.menuImage}
-                  resizeMode="contain"
-                  accessibilityLabel={`${item.name} photo`}
-                />
+                <MenuThumbnail name={item.name} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.itemName}>{item.name}</Text>
                   <Text style={s.itemPrice}>{money(item.price)}</Text>
@@ -1738,12 +1754,7 @@ function CanteenApp() {
             }
             renderItem={({ item }) => (
               <View style={s.itemRow}>
-                <Image
-                  source={menuImageFor(item.name)}
-                  style={s.menuImage}
-                  resizeMode="contain"
-                  accessibilityLabel={`${item.name} photo`}
-                />
+                <MenuThumbnail name={item.name} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.itemName}>{item.name}</Text>
                   <Text style={s.itemPrice}>{money(item.price)}</Text>
@@ -3089,6 +3100,12 @@ const s = StyleSheet.create({
     marginRight: 12,
     backgroundColor: "#edf1ec",
   },
+  menuImagePlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f2e7cf",
+  },
+  menuPlaceholderCharacter: { fontSize: 30 },
   itemName: { color: "#1e2b22", fontSize: 16, fontWeight: "700" },
   itemPrice: { color: "#718075", fontSize: 13, marginTop: 3 },
   qtyButton: {
