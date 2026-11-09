@@ -1,6 +1,7 @@
 import { Buffer } from 'buffer';
 import { Platform } from 'react-native';
 import type Socket from 'react-native-tcp-socket/lib/types/Socket';
+import { GUJARATI_COUPON_LINES } from './gujaratiCoupons';
 import { GUJARATI_REPORT_FOOTER } from './gujaratiFooter';
 
 export type PrintableOrder = {
@@ -61,6 +62,24 @@ function ascii(value: string) {
 
 function line(value = '') {
   return Buffer.concat([ascii(value), command(0x0a)]);
+}
+
+function rasterLine(image: { data: Buffer; widthBytes: number; height: number }) {
+  return Buffer.concat([
+    command(ESC, 0x61, 0x01),
+    command(
+      GS,
+      0x76,
+      0x30,
+      0x00,
+      image.widthBytes & 0xff,
+      image.widthBytes >> 8,
+      image.height & 0xff,
+      image.height >> 8,
+    ),
+    image.data,
+    command(0x0a, ESC, 0x61, 0x00),
+  ]);
 }
 
 function centered(value: string) {
@@ -168,23 +187,39 @@ export function makePrinterTestJob() {
 }
 
 export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
-  const itemName = `${slip.meal} meal`.slice(0, 26);
+  const mealImage = {
+    Breakfast: GUJARATI_COUPON_LINES.breakfast,
+    Lunch: GUJARATI_COUPON_LINES.lunch,
+    Dinner: GUJARATI_COUPON_LINES.dinner,
+  }[slip.meal];
+  const paymentImage = slip.payment_mode === 'Online'
+    ? GUJARATI_COUPON_LINES.paymentOnline
+    : GUJARATI_COUPON_LINES.paymentCash;
   const coupon = Buffer.concat([
     startSlip(),
-    command(ESC, 0x45, 0x01),
-    centered('TRIMANDIR BHOJANSHALA'),
-    command(ESC, 0x45, 0x00),
-    centered('BHET PRASAD'),
+    rasterLine(GUJARATI_COUPON_LINES.salutation),
+    rasterLine(GUJARATI_COUPON_LINES.header),
+    rasterLine(GUJARATI_COUPON_LINES.bhetPrasad),
     separator(),
-    centered(slip.category.toUpperCase()),
-    ...(slip.category === 'Member'
-      ? [centered(`PAYMENT: ${slip.payment_mode.toUpperCase()}`)]
+    rasterLine(GUJARATI_COUPON_LINES.couponDate),
+    centered(new Date(slip.created_at).toLocaleDateString('en-GB')),
+    ...(slip.category === 'Sevarthi'
+      ? [rasterLine(GUJARATI_COUPON_LINES.sevarthi)]
       : []),
-    line(`${'NO.'.padEnd(6)}${'ITEM'.padEnd(26)}${'RATE'.padStart(16)}`),
+    ...(slip.category === 'Member'
+      ? [rasterLine(paymentImage)]
+      : []),
+    rasterLine(
+      slip.category === 'Member'
+        ? GUJARATI_COUPON_LINES.tableHeader
+        : GUJARATI_COUPON_LINES.tableHeaderNoRate,
+    ),
     separator(),
-    line(`${'1'.padEnd(6)}${itemName.padEnd(26)}${(slip.category === 'Member' ? amount(slip.price) : '').padStart(16)}`),
+    line('1'),
+    rasterLine(mealImage),
+    ...(slip.category === 'Member' ? [line(amount(slip.price))] : []),
     separator(),
-    centered(new Date(slip.created_at).toLocaleString()),
+    line(new Date(slip.created_at).toLocaleString()),
     cut(),
   ]);
   return Buffer.concat(Array.from({ length: slip.quantity }, () => coupon));

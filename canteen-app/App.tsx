@@ -127,6 +127,11 @@ const bhojanshalaPriceSettingKeys: Record<BhojanshalaMeal, string> = {
   Lunch: "bhojanshala_price_lunch",
   Dinner: "bhojanshala_price_dinner",
 };
+const bhojanshalaGujaratiMealLabels: Record<BhojanshalaMeal, string> = {
+  Breakfast: "સવારનો નાસ્તો",
+  Lunch: "બપોરનું ભોજન",
+  Dinner: "સાંજનું ભોજન",
+};
 const menuImages: Record<string, number> = {
   bhel: require("./assets/menu/bhel.png"),
   bhajia: require("./assets/menu/bhajia.png"),
@@ -2601,34 +2606,42 @@ function CanteenApp() {
             </View>
             {bhojanshalaSlip && (
               <ScrollView style={s.receiptPaper}>
-                <Text style={s.receiptBrand}>TRIMANDIR BHOJANSHALA</Text>
-                <Text style={s.receiptKind}>BHET PRASAD</Text>
+                <Text style={s.receiptBrand}>વેરાવળ ત્રિમંદિર-ભોજનશાળા</Text>
+                <Text style={s.receiptKind}>ભેટ પ્રસાદ</Text>
                 <View style={s.receiptDivider} />
-                <Text style={s.bhojanshalaCategoryText}>
-                  {bhojanshalaSlip.category.toUpperCase()}
+                <Text style={s.receiptKind}>કૂપન તા:</Text>
+                <Text style={s.receiptDate}>
+                  {new Date(bhojanshalaSlip.created_at).toLocaleDateString("en-GB")}
                 </Text>
+                {bhojanshalaSlip.category === "Sevarthi" && (
+                  <Text style={s.bhojanshalaCategoryText}>સેવાર્થી</Text>
+                )}
                 {bhojanshalaSlip.category === "Member" && (
                   <Text style={s.receiptKind}>
-                    PAYMENT: {bhojanshalaSlip.payment_mode.toUpperCase()}
+                    ચુકવણી: {bhojanshalaSlip.payment_mode === "Online" ? "ઓનલાઈન" : "રોકડ"}
                   </Text>
                 )}
                 <View style={s.bhojanshalaCouponTable}>
                   <View style={s.bhojanshalaCouponTableRow}>
-                    <Text style={s.bhojanshalaCouponNumber}>NO.</Text>
-                    <Text style={s.bhojanshalaCouponItem}>ITEM</Text>
-                    <Text style={s.bhojanshalaCouponRate}>RATE</Text>
+                    <Text style={s.bhojanshalaCouponNumber}>ક્રમ</Text>
+                    <Text style={s.bhojanshalaCouponItem}>આઈટમ</Text>
+                    {bhojanshalaSlip.category === "Member" && (
+                      <Text style={s.bhojanshalaCouponRate}>રેટ</Text>
+                    )}
                   </View>
                   <View style={s.bhojanshalaCouponTableRow}>
                     <Text style={s.bhojanshalaCouponNumber}>1</Text>
-                    <Text style={s.bhojanshalaCouponItem}>{bhojanshalaSlip.meal} meal</Text>
-                    <Text style={s.bhojanshalaCouponRate}>
-                      {bhojanshalaSlip.category === "Member" ? money(bhojanshalaSlip.price) : ""}
+                    <Text style={s.bhojanshalaCouponItem}>
+                      {bhojanshalaGujaratiMealLabels[bhojanshalaSlip.meal]}
                     </Text>
+                    {bhojanshalaSlip.category === "Member" && (
+                      <Text style={s.bhojanshalaCouponRate}>
+                        {money(bhojanshalaSlip.price)}
+                      </Text>
+                    )}
                   </View>
                 </View>
-                <Text style={s.receiptDate}>
-                  {new Date(bhojanshalaSlip.created_at).toLocaleString()}
-                </Text>
+                <Text style={s.receiptDate}>{new Date(bhojanshalaSlip.created_at).toLocaleString()}</Text>
               </ScrollView>
             )}
             {bhojanshalaSlip && (
