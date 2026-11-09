@@ -168,31 +168,26 @@ export function makePrinterTestJob() {
 }
 
 export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
-  return Buffer.concat([
+  const itemName = `${slip.meal} meal`.slice(0, 26);
+  const coupon = Buffer.concat([
     startSlip(),
-    centered('TRIMANDIR'),
-    centered('BHOJANSHALA'),
-    separator(),
     command(ESC, 0x45, 0x01),
-    command(GS, 0x21, 0x11),
-    centered(slip.meal.toUpperCase()),
-    command(GS, 0x21, 0x00),
+    centered('TRIMANDIR BHOJANSHALA'),
     command(ESC, 0x45, 0x00),
+    centered('BHET PRASAD'),
+    separator(),
     centered(slip.category.toUpperCase()),
     ...(slip.category === 'Member'
       ? [centered(`PAYMENT: ${slip.payment_mode.toUpperCase()}`)]
       : []),
-    centered('QUANTITY'),
-    command(GS, 0x21, 0x22),
-    centered(String(slip.quantity)),
-    command(GS, 0x21, 0x00),
-    ...(slip.category === 'Member'
-      ? [centered(amount(slip.price * slip.quantity))]
-      : []),
-    centered(new Date(slip.created_at).toLocaleString()),
+    line(`${'NO.'.padEnd(6)}${'ITEM'.padEnd(26)}${'RATE'.padStart(16)}`),
     separator(),
+    line(`${'1'.padEnd(6)}${itemName.padEnd(26)}${(slip.category === 'Member' ? amount(slip.price) : '').padStart(16)}`),
+    separator(),
+    centered(new Date(slip.created_at).toLocaleString()),
     cut(),
   ]);
+  return Buffer.concat(Array.from({ length: slip.quantity }, () => coupon));
 }
 
 export function makeBhojanshalaSalesPrintJob(report: PrintableBhojanshalaSales) {

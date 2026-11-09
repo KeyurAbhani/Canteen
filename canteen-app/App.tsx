@@ -2601,12 +2601,9 @@ function CanteenApp() {
             </View>
             {bhojanshalaSlip && (
               <ScrollView style={s.receiptPaper}>
-                <Text style={s.receiptBrand}>TRIMANDIR</Text>
-                <Text style={s.receiptKind}>BHOJANSHALA</Text>
+                <Text style={s.receiptBrand}>TRIMANDIR BHOJANSHALA</Text>
+                <Text style={s.receiptKind}>BHET PRASAD</Text>
                 <View style={s.receiptDivider} />
-                <Text style={s.bhojanshalaMealText}>
-                  {bhojanshalaSlip.meal.toUpperCase()}
-                </Text>
                 <Text style={s.bhojanshalaCategoryText}>
                   {bhojanshalaSlip.category.toUpperCase()}
                 </Text>
@@ -2615,20 +2612,29 @@ function CanteenApp() {
                     PAYMENT: {bhojanshalaSlip.payment_mode.toUpperCase()}
                   </Text>
                 )}
-                <View style={s.receiptDivider} />
-                <Text style={s.receiptKind}>QUANTITY</Text>
-                <Text style={s.bhojanshalaCountText}>
-                  {bhojanshalaSlip.quantity}
-                </Text>
-                {bhojanshalaSlip.category === "Member" && (
-                  <Text style={s.bhojanshalaPriceText}>
-                    {money(bhojanshalaSlip.price * bhojanshalaSlip.quantity)}
-                  </Text>
-                )}
+                <View style={s.bhojanshalaCouponTable}>
+                  <View style={s.bhojanshalaCouponTableRow}>
+                    <Text style={s.bhojanshalaCouponNumber}>NO.</Text>
+                    <Text style={s.bhojanshalaCouponItem}>ITEM</Text>
+                    <Text style={s.bhojanshalaCouponRate}>RATE</Text>
+                  </View>
+                  <View style={s.bhojanshalaCouponTableRow}>
+                    <Text style={s.bhojanshalaCouponNumber}>1</Text>
+                    <Text style={s.bhojanshalaCouponItem}>{bhojanshalaSlip.meal} meal</Text>
+                    <Text style={s.bhojanshalaCouponRate}>
+                      {bhojanshalaSlip.category === "Member" ? money(bhojanshalaSlip.price) : ""}
+                    </Text>
+                  </View>
+                </View>
                 <Text style={s.receiptDate}>
                   {new Date(bhojanshalaSlip.created_at).toLocaleString()}
                 </Text>
               </ScrollView>
+            )}
+            {bhojanshalaSlip && (
+              <Text style={[s.hint, { textAlign: "center", marginBottom: 8 }]}>
+                Prints {bhojanshalaSlip.quantity} separate coupon{bhojanshalaSlip.quantity === 1 ? "" : "s"}
+              </Text>
             )}
             {bhojanshalaSlip && (
               <TouchableOpacity
@@ -2637,7 +2643,9 @@ function CanteenApp() {
                 onPress={printBhojanshalaSlip}
               >
                 <Text style={s.primaryText}>
-                  {printing ? "Sending to printer…" : "Print slip"}
+                  {printing
+                    ? "Printing coupons…"
+                    : `Print ${bhojanshalaSlip.quantity} coupon${bhojanshalaSlip.quantity === 1 ? "" : "s"}`}
                 </Text>
               </TouchableOpacity>
             )}
@@ -2920,6 +2928,48 @@ const s = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#e5e9e3",
+  },
+  bhojanshalaCouponTable: {
+    borderWidth: 1,
+    borderColor: "#aeb5ad",
+    marginTop: 10,
+    marginBottom: 12,
+  },
+  bhojanshalaCouponTableRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    borderBottomWidth: 1,
+    borderColor: "#d7dbd5",
+    minHeight: 38,
+  },
+  bhojanshalaCouponNumber: {
+    width: 48,
+    textAlign: "center",
+    textAlignVertical: "center",
+    paddingVertical: 8,
+    borderRightWidth: 1,
+    borderColor: "#d7dbd5",
+    color: "#29382d",
+    fontWeight: "700",
+  },
+  bhojanshalaCouponItem: {
+    flex: 1,
+    textAlignVertical: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRightWidth: 1,
+    borderColor: "#d7dbd5",
+    color: "#29382d",
+    fontWeight: "700",
+  },
+  bhojanshalaCouponRate: {
+    width: 82,
+    textAlign: "right",
+    textAlignVertical: "center",
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    color: "#29382d",
+    fontWeight: "700",
   },
   bhojanshalaMealSalesTitle: {
     color: "#24372a",
