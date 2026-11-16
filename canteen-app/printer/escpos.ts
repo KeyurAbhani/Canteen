@@ -27,6 +27,7 @@ export type PrintableBhojanshalaSlip = {
   meal: 'Breakfast' | 'Lunch' | 'Dinner';
   category: 'Member' | 'Sevarthi';
   price: number;
+  parcel_price: number;
   quantity: number;
   payment_mode: 'Online' | 'Cash';
   created_at: string;
@@ -65,6 +66,30 @@ function line(value = '') {
 }
 
 function rasterLine(image: { data: Buffer; widthBytes: number; height: number }) {
+  // English receipts use a 48-column (80 mm) layout. The Gujarati source art
+  // was only 384 dots wide (58 mm), so scale it to the same printable width.
+  // GS v 0 advances by the image height; crop unused source rows first.
+  let firstRow = 0;
+  let lastRow = image.height - 1;
+  const rowHasInk = (row: number) =>
+    image.data.subarray(row * image.widthBytes, (row + 1) * image.widthBytes).some((byte) => byte !== 0);
+  while (firstRow < image.height && !rowHasInk(firstRow)) firstRow++;
+  while (lastRow >= firstRow && !rowHasInk(lastRow)) lastRow--;
+  const sourceHeight = Math.max(1, lastRow - firstRow + 1);
+  const scale = 1.5;
+  const widthBytes = 72;
+  const width = widthBytes * 8;
+  const height = Math.ceil(sourceHeight * scale);
+  const data = Buffer.alloc(widthBytes * height);
+  for (let y = 0; y < height; y++) {
+    const sourceY = firstRow + Math.min(sourceHeight - 1, Math.floor(y / scale));
+    for (let x = 0; x < width; x++) {
+      const sourceX = Math.min(image.widthBytes * 8 - 1, Math.floor(x / scale));
+      const sourceByte = image.data[sourceY * image.widthBytes + Math.floor(sourceX / 8)];
+      if (sourceByte & (0x80 >> (sourceX % 8)))
+        data[y * widthBytes + Math.floor(x / 8)] |= 0x80 >> (x % 8);
+    }
+  }
   return Buffer.concat([
     command(ESC, 0x61, 0x01),
     command(
@@ -72,13 +97,13 @@ function rasterLine(image: { data: Buffer; widthBytes: number; height: number })
       0x76,
       0x30,
       0x00,
-      image.widthBytes & 0xff,
-      image.widthBytes >> 8,
-      image.height & 0xff,
-      image.height >> 8,
+      widthBytes & 0xff,
+      widthBytes >> 8,
+      height & 0xff,
+      height >> 8,
     ),
-    image.data,
-    command(0x0a, ESC, 0x61, 0x00),
+    data,
+    command(ESC, 0x61, 0x00),
   ]);
 }
 
@@ -87,6 +112,10 @@ function centered(value: string) {
 }
 
 function separator() {
+  return line('-'.repeat(WIDTH));
+}
+
+function couponSeparator() {
   return line('-'.repeat(WIDTH));
 }
 
@@ -200,7 +229,7 @@ export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
     rasterLine(GUJARATI_COUPON_LINES.salutation),
     rasterLine(GUJARATI_COUPON_LINES.header),
     rasterLine(GUJARATI_COUPON_LINES.bhetPrasad),
-    separator(),
+    couponSeparator(),
     rasterLine(GUJARATI_COUPON_LINES.couponDate),
     centered(new Date(slip.created_at).toLocaleDateString('en-GB')),
     ...(slip.category === 'Sevarthi'
@@ -209,16 +238,19 @@ export function makeBhojanshalaPrintJob(slip: PrintableBhojanshalaSlip) {
     ...(slip.category === 'Member'
       ? [rasterLine(paymentImage)]
       : []),
+    ...(slip.category === 'Member' && slip.parcel_price > 0
+      ? [centered(`Parcel ${amount(slip.parcel_price)}`)]
+      : []),
     rasterLine(
       slip.category === 'Member'
         ? GUJARATI_COUPON_LINES.tableHeader
         : GUJARATI_COUPON_LINES.tableHeaderNoRate,
     ),
-    separator(),
+    couponSeparator(),
     line('1'),
     rasterLine(mealImage),
     ...(slip.category === 'Member' ? [line(amount(slip.price))] : []),
-    separator(),
+    couponSeparator(),
     line(new Date(slip.created_at).toLocaleString()),
     cut(),
   ]);

@@ -11,7 +11,7 @@
     },
     "android": {
       "package": "com.trimadir.canteen",
-      "versionCode": 3,
+      "versionCode": 5,
       "permissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",

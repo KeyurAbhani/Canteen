@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -33,6 +34,7 @@ type BhojanshalaSlip = {
   meal: BhojanshalaMeal;
   category: BhojanshalaCategory;
   price: number;
+  parcel_price: number;
   quantity: number;
   payment_mode: BhojanshalaPaymentMode;
   created_at: string;
@@ -132,6 +134,9 @@ const bhojanshalaGujaratiMealLabels: Record<BhojanshalaMeal, string> = {
   Lunch: "બપોરનું ભોજન",
   Dinner: "સાંજનું ભોજન",
 };
+const bhojanshalaDefaultPrices: Record<BhojanshalaMeal, string> = {
+  Breakfast: "60", Lunch: "100", Dinner: "100",
+};
 const menuImages: Record<string, number> = {
   bhel: require("./assets/menu/bhel.png"),
   bhajia: require("./assets/menu/bhajia.png"),
@@ -189,7 +194,7 @@ function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, token INTEGER NOT NULL, order_date TEXT NOT NULL, total REAL NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, item_name TEXT NOT NULL, unit_price REAL NOT NULL, quantity INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS daily_token_sequences (order_date TEXT PRIMARY KEY, last_token INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS bhojanshala_slips (id INTEGER PRIMARY KEY AUTOINCREMENT, meal TEXT NOT NULL, category TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, payment_mode TEXT NOT NULL DEFAULT 'Online', order_date TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS bhojanshala_slips (id INTEGER PRIMARY KEY AUTOINCREMENT, meal TEXT NOT NULL, category TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, payment_mode TEXT NOT NULL DEFAULT 'Online', order_date TEXT NOT NULL, created_at TEXT NOT NULL, parcel_price REAL NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS app_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL);`);
   db.execSync(
     "CREATE TABLE IF NOT EXISTS inventory_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT NOT NULL, quantity REAL NOT NULL, unit TEXT NOT NULL, total_cost REAL NOT NULL, purchase_date TEXT NOT NULL, created_at TEXT NOT NULL)",
@@ -215,6 +220,16 @@ function initializeDatabase() {
     db.execSync(
       "ALTER TABLE bhojanshala_slips ADD COLUMN payment_mode TEXT NOT NULL DEFAULT 'Online'",
     );
+  if (!bhojanshalaSlipColumns.some((column) => column.name === "parcel_price"))
+    db.execSync("ALTER TABLE bhojanshala_slips ADD COLUMN parcel_price REAL NOT NULL DEFAULT 0");
+  for (const [meal, settingKey] of Object.entries(bhojanshalaPriceSettingKeys)) {
+    db.runSync(
+      "INSERT OR IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)",
+      settingKey,
+      bhojanshalaDefaultPrices[meal as BhojanshalaMeal],
+    );
+  }
+  db.runSync("INSERT OR IGNORE INTO app_settings (setting_key, setting_value) VALUES ('bhojanshala_parcel_price', '0')");
   const orderItemColumns = db.getAllSync<{ name: string }>(
     "PRAGMA table_info(order_items)",
   );
@@ -272,6 +287,11 @@ function CanteenApp() {
   const [bhojanshalaCategory, setBhojanshalaCategory] =
     useState<BhojanshalaCategory>("Member");
   const [bhojanshalaQuantity, setBhojanshalaQuantity] = useState("0");
+  const [bhojanshalaParcel, setBhojanshalaParcel] = useState(false);
+  const [editBhojanshalaParcel, setEditBhojanshalaParcel] = useState(false);
+  const [bhojanshalaParcelPrice, setBhojanshalaParcelPrice] = useState(() =>
+    db.getFirstSync<{ setting_value: string }>("SELECT setting_value FROM app_settings WHERE setting_key = 'bhojanshala_parcel_price'")?.setting_value ?? "0",
+  );
   const [bhojanshalaPaymentMode, setBhojanshalaPaymentMode] = useState<BhojanshalaPaymentMode>("Online");
   const [editBhojanshalaPaymentMode, setEditBhojanshalaPaymentMode] = useState<BhojanshalaPaymentMode>("Online");
   const [bhojanshalaPrices, setBhojanshalaPrices] = useState<
@@ -281,17 +301,17 @@ function CanteenApp() {
       db.getFirstSync<{ setting_value: string }>(
         "SELECT setting_value FROM app_settings WHERE setting_key = ?",
         bhojanshalaPriceSettingKeys.Breakfast,
-      )?.setting_value ?? "",
+      )?.setting_value ?? bhojanshalaDefaultPrices.Breakfast,
     Lunch:
       db.getFirstSync<{ setting_value: string }>(
         "SELECT setting_value FROM app_settings WHERE setting_key = ?",
         bhojanshalaPriceSettingKeys.Lunch,
-      )?.setting_value ?? "",
+      )?.setting_value ?? bhojanshalaDefaultPrices.Lunch,
     Dinner:
       db.getFirstSync<{ setting_value: string }>(
         "SELECT setting_value FROM app_settings WHERE setting_key = ?",
         bhojanshalaPriceSettingKeys.Dinner,
-      )?.setting_value ?? "",
+      )?.setting_value ?? bhojanshalaDefaultPrices.Dinner,
   }));
   const [bhojanshalaSlip, setBhojanshalaSlip] =
     useState<BhojanshalaSlip | null>(null);
@@ -416,7 +436,7 @@ function CanteenApp() {
           db.runSync(
             "INSERT INTO menu_items (name, price) VALUES (?, ?)",
             "Sandwich",
-            60,
+            30,
           );
           db.runSync(
             "INSERT INTO menu_items (name, price) VALUES (?, ?)",
@@ -428,6 +448,25 @@ function CanteenApp() {
             "Tea",
             15,
           );
+          db.runSync("INSERT INTO menu_items (name, price) VALUES ('Bhajia', 40)");
+          db.runSync("INSERT INTO menu_items (name, price) VALUES ('Dabeli', 30)");
+        });
+      const canteenDefaultsSeeded = db.getFirstSync<{ setting_value: string }>(
+        "SELECT setting_value FROM app_settings WHERE setting_key = 'menu_seed_canteen_defaults_v1'",
+      )?.setting_value;
+      if (!canteenDefaultsSeeded)
+        db.withTransactionSync(() => {
+          for (const [itemName, itemPrice] of [["Sandwich", 30], ["Bhajia", 40], ["Vadapav", 30], ["Dabeli", 30]] as const) {
+            const existing = db.getFirstSync<{ id: number }>(
+              "SELECT id FROM menu_items WHERE lower(trim(name)) = lower(?) LIMIT 1",
+              itemName,
+            );
+            if (existing)
+              db.runSync("UPDATE menu_items SET name = ?, price = ?, active = 1 WHERE id = ?", itemName, itemPrice, existing.id);
+            else
+              db.runSync("INSERT INTO menu_items (name, price) VALUES (?, ?)", itemName, itemPrice);
+          }
+          db.runSync("INSERT INTO app_settings (setting_key, setting_value) VALUES ('menu_seed_canteen_defaults_v1', '1')");
         });
       const vadapavSeeded = db.getFirstSync<{ setting_value: string }>(
         "SELECT setting_value FROM app_settings WHERE setting_key = ?",
@@ -554,7 +593,7 @@ function CanteenApp() {
     );
     setHistoryBhojanshalaSlips(
       db.getAllSync<HistoryBhojanshalaSlip>(
-        "SELECT id, meal, category, price, quantity, payment_mode, created_at FROM bhojanshala_slips WHERE order_date = ? ORDER BY created_at DESC, id DESC",
+        "SELECT id, meal, category, price, parcel_price, quantity, payment_mode, created_at FROM bhojanshala_slips WHERE order_date = ? ORDER BY created_at DESC, id DESC",
         today(),
       ),
     );
@@ -1164,6 +1203,12 @@ function CanteenApp() {
       }
       parsedPrices[meal] = value;
     }
+    const parcelRaw = bhojanshalaParcelPrice.trim().replace(",", ".");
+    const parsedParcelPrice = Number(parcelRaw);
+    if (!parcelRaw || !Number.isFinite(parsedParcelPrice) || parsedParcelPrice < 0) {
+      Alert.alert("Check parcel price", "Enter a valid parcel price of ₹0 or more.");
+      return;
+    }
     db.withTransactionSync(() => {
       for (const meal of ["Breakfast", "Lunch", "Dinner"] as const) {
         db.runSync(
@@ -1172,6 +1217,10 @@ function CanteenApp() {
           String(parsedPrices[meal]),
         );
       }
+      db.runSync(
+        "INSERT INTO app_settings (setting_key, setting_value) VALUES ('bhojanshala_parcel_price', ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value",
+        String(parsedParcelPrice),
+      );
     });
     Alert.alert("Prices saved", "Bhojanshala member prices have been saved.");
   }
@@ -1197,11 +1246,17 @@ function CanteenApp() {
       return;
     }
     const createdAt = new Date().toISOString();
-    const price = bhojanshalaCategory === "Sevarthi" ? 0 : memberPrice;
+    const parcelRaw = bhojanshalaParcelPrice.trim().replace(",", ".");
+    const parcelPrice = bhojanshalaCategory === "Member" && bhojanshalaParcel ? Number(parcelRaw) : 0;
+    if (bhojanshalaCategory === "Member" && bhojanshalaParcel && (!parcelRaw || !Number.isFinite(parcelPrice) || parcelPrice < 0)) {
+      Alert.alert("Set the parcel price first", "Enter and save a valid parcel price in Menu.");
+      return;
+    }
+    const price = bhojanshalaCategory === "Sevarthi" ? 0 : memberPrice + parcelPrice;
     const paymentMode = bhojanshalaCategory === "Member" ? bhojanshalaPaymentMode : "Online";
     try {
       db.runSync(
-        "INSERT INTO bhojanshala_slips (meal, category, price, quantity, payment_mode, order_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bhojanshala_slips (meal, category, price, quantity, payment_mode, order_date, created_at, parcel_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         bhojanshalaMeal,
         bhojanshalaCategory,
         price,
@@ -1209,6 +1264,7 @@ function CanteenApp() {
         paymentMode,
         today(),
         createdAt,
+        parcelPrice,
       );
     } catch (error) {
       Alert.alert(
@@ -1221,6 +1277,7 @@ function CanteenApp() {
       meal: bhojanshalaMeal,
       category: bhojanshalaCategory,
       price,
+      parcel_price: parcelPrice,
       quantity,
       payment_mode: paymentMode,
       created_at: createdAt,
@@ -1229,6 +1286,7 @@ function CanteenApp() {
     refreshReport(loadedReportDate);
     refreshBhojanshalaSales(bhojanshalaSalesDate);
     refreshHistory();
+    setBhojanshalaParcel(false);
   }
 
   function editHistoryBhojanshalaSlip(slip: HistoryBhojanshalaSlip) {
@@ -1237,6 +1295,7 @@ function CanteenApp() {
     setEditBhojanshalaCategory(slip.category);
     setEditBhojanshalaQuantity(String(slip.quantity));
     setEditBhojanshalaPaymentMode(slip.payment_mode);
+    setEditBhojanshalaParcel(slip.category === "Member" && slip.parcel_price > 0);
   }
 
   function saveHistoryBhojanshalaSlip() {
@@ -1252,11 +1311,12 @@ function CanteenApp() {
       Alert.alert("Set the member price first", `Enter and save a valid ${editBhojanshalaMeal.toLowerCase()} price.`);
       return;
     }
-    const price = editBhojanshalaCategory === "Sevarthi" ? 0 : memberPrice;
+    const parcelPrice = editBhojanshalaCategory === "Member" && editBhojanshalaParcel ? Number(bhojanshalaParcelPrice) : 0;
+    const price = editBhojanshalaCategory === "Sevarthi" ? 0 : memberPrice + parcelPrice;
     const paymentMode = editBhojanshalaCategory === "Member" ? editBhojanshalaPaymentMode : "Online";
     db.runSync(
-      "UPDATE bhojanshala_slips SET meal = ?, category = ?, price = ?, quantity = ?, payment_mode = ? WHERE id = ?",
-      editBhojanshalaMeal, editBhojanshalaCategory, price, quantity, paymentMode, editingBhojanshalaSlip.id,
+      "UPDATE bhojanshala_slips SET meal = ?, category = ?, price = ?, quantity = ?, payment_mode = ?, parcel_price = ? WHERE id = ?",
+      editBhojanshalaMeal, editBhojanshalaCategory, price, quantity, paymentMode, parcelPrice, editingBhojanshalaSlip.id,
     );
     setEditingBhojanshalaSlip(null);
     refreshHistory();
@@ -1651,6 +1711,19 @@ function CanteenApp() {
               </View>
             </>
           )}
+          {bhojanshalaCategory === "Member" && (
+            <View style={[s.parcelToggleRow, bhojanshalaParcel && s.parcelToggleRowActive]}>
+              <Text style={s.paymentModeText}>Parcel</Text>
+              <Switch
+                value={bhojanshalaParcel}
+                onValueChange={setBhojanshalaParcel}
+                trackColor={{ false: "#cbd5e1", true: "#86c49d" }}
+                thumbColor={bhojanshalaParcel ? "#267347" : "#f8fafc"}
+                accessibilityLabel="Parcel"
+              />
+              <Text style={s.parcelToggleState}>{bhojanshalaParcel ? "On" : "Off"}</Text>
+            </View>
+          )}
           <Text style={s.fieldLabel}>Number of meals</Text>
           <TextInput
             value={bhojanshalaQuantity}
@@ -1712,6 +1785,16 @@ function CanteenApp() {
                       />
                     </View>
                   ))}
+                  <View style={s.bhojanshalaPriceRow}>
+                    <Text style={s.bhojanshalaPriceLabel}>Parcel</Text>
+                    <TextInput
+                      value={bhojanshalaParcelPrice}
+                      onChangeText={setBhojanshalaParcelPrice}
+                      placeholder="0"
+                      keyboardType="decimal-pad"
+                      style={s.bhojanshalaPriceInput}
+                    />
+                  </View>
                   <Text style={s.hint}>
                     Sevarthi slips are always free.
                   </Text>
@@ -1719,7 +1802,7 @@ function CanteenApp() {
                     style={s.secondary}
                     onPress={saveBhojanshalaPrices}
                   >
-                    <Text style={s.secondaryText}>Save meal prices</Text>
+                    <Text style={s.secondaryText}>Save prices</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={s.toolbar}>
@@ -2401,6 +2484,17 @@ function CanteenApp() {
             </View>
             {editBhojanshalaCategory === "Member" && (
               <>
+                <View style={[s.parcelToggleRow, editBhojanshalaParcel && s.parcelToggleRowActive]}>
+                  <Text style={s.paymentModeText}>Parcel</Text>
+                  <Switch
+                    value={editBhojanshalaParcel}
+                    onValueChange={setEditBhojanshalaParcel}
+                    trackColor={{ false: "#cbd5e1", true: "#86c49d" }}
+                    thumbColor={editBhojanshalaParcel ? "#267347" : "#f8fafc"}
+                    accessibilityLabel="Parcel"
+                  />
+                  <Text style={s.parcelToggleState}>{editBhojanshalaParcel ? "On" : "Off"}</Text>
+                </View>
                 <Text style={s.fieldLabel}>Payment mode</Text>
                 <View style={s.paymentModeRow}>
                   {(["Online", "Cash"] as BhojanshalaPaymentMode[]).map((mode) => {
@@ -2641,6 +2735,9 @@ function CanteenApp() {
                     )}
                   </View>
                 </View>
+                {bhojanshalaSlip.category === "Member" && bhojanshalaSlip.parcel_price > 0 && (
+                  <Text style={[s.receiptKind, { marginTop: 8 }]}>પાર્સલ · {money(bhojanshalaSlip.parcel_price)}</Text>
+                )}
                 <Text style={s.receiptDate}>{new Date(bhojanshalaSlip.created_at).toLocaleString()}</Text>
               </ScrollView>
             )}
@@ -2916,6 +3013,31 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 5,
+  },
+  parcelToggleRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingLeft: 12,
+    paddingRight: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#dce4dc",
+    backgroundColor: "#f6f8f5",
+  },
+  parcelToggleRowActive: {
+    borderColor: "#8ab89a",
+    backgroundColor: "#edf7f0",
+  },
+  parcelToggleState: {
+    minWidth: 27,
+    color: "#526257",
+    fontSize: 12,
+    fontWeight: "700",
   },
   bhojanshalaPriceLabel: {
     color: "#29382d",
