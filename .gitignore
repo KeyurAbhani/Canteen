@@ -34,6 +34,11 @@ yarn-error.*
 .env
 .env*.local
 
+# Hostinger database credentials (keep these on the server, never in Git)
+/hostinger-api/config.php
+/hostinger-api/canteen-sync-config.php
+/canteen-sync-config.php
+
 # typescript
 *.tsbuildinfo
 

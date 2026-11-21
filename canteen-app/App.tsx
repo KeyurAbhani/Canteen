@@ -1,5 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import * as SQLite from "expo-sqlite";
+import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -26,6 +27,11 @@ import {
   sendBluetoothPrintJob,
   sendPrintJob,
 } from "./printer/escpos";
+import {
+  initializeCloudSync,
+  reserveCloudToken,
+  synchronizeCloudDatabase,
+} from "./cloudSync";
 
 type BhojanshalaMeal = "Breakfast" | "Lunch" | "Dinner";
 type BhojanshalaCategory = "Member" | "Sevarthi";
@@ -88,6 +94,7 @@ type ReceiptData = {
   items: SavedOrderItem[];
 };
 type PurchaseItem = { id: number; name: string; unit: "kg" | "items" };
+type InventoryDepartment = "Canteen" | "Bhojanshala";
 type PurchaseRow = {
   id: number;
   item_name: string;
@@ -95,6 +102,7 @@ type PurchaseRow = {
   unit: string;
   total_cost: number;
   purchase_date: string;
+  department: InventoryDepartment;
 };
 type BluetoothDevice = { id: string; name?: string | null; bondState?: string };
 type AppTab =
@@ -106,7 +114,8 @@ type AppTab =
   | "report"
   | "bhojanshalaSales"
   | "analysis"
-  | "printer";
+  | "printer"
+  | "cloudSync";
 const stockItems: PurchaseItem[] = [
   { id: 1, name: "Sandwich bread", unit: "items" },
   { id: 2, name: "Panipuri Puri", unit: "items" },
@@ -122,6 +131,18 @@ const stockItems: PurchaseItem[] = [
   { id: 12, name: "Paper Dish", unit: "items" },
   { id: 13, name: "Potato", unit: "kg" },
   { id: 14, name: "Puff", unit: "items" },
+];
+const bhojanshalaStockItems: PurchaseItem[] = [
+  { id: 101, name: "Rice", unit: "kg" },
+  { id: 102, name: "Wheat flour", unit: "kg" },
+  { id: 103, name: "Toor dal", unit: "kg" },
+  { id: 104, name: "Moong dal", unit: "kg" },
+  { id: 105, name: "Cooking oil", unit: "kg" },
+  { id: 106, name: "Vegetables", unit: "kg" },
+  { id: 107, name: "Spices", unit: "kg" },
+  { id: 108, name: "Salt", unit: "kg" },
+  { id: 109, name: "Sugar", unit: "kg" },
+  { id: 110, name: "Paper plates", unit: "items" },
 ];
 const db = SQLite.openDatabaseSync("canteen.db");
 const bhojanshalaPriceSettingKeys: Record<BhojanshalaMeal, string> = {
@@ -197,8 +218,11 @@ function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS bhojanshala_slips (id INTEGER PRIMARY KEY AUTOINCREMENT, meal TEXT NOT NULL, category TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, payment_mode TEXT NOT NULL DEFAULT 'Online', order_date TEXT NOT NULL, created_at TEXT NOT NULL, parcel_price REAL NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS app_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL);`);
   db.execSync(
-    "CREATE TABLE IF NOT EXISTS inventory_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT NOT NULL, quantity REAL NOT NULL, unit TEXT NOT NULL, total_cost REAL NOT NULL, purchase_date TEXT NOT NULL, created_at TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS inventory_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT NOT NULL, quantity REAL NOT NULL, unit TEXT NOT NULL, total_cost REAL NOT NULL, purchase_date TEXT NOT NULL, created_at TEXT NOT NULL, department TEXT NOT NULL DEFAULT 'Canteen')",
   );
+  const purchaseColumns = db.getAllSync<{ name: string }>("PRAGMA table_info(inventory_purchases)");
+  if (!purchaseColumns.some((column) => column.name === "department"))
+    db.execSync("ALTER TABLE inventory_purchases ADD COLUMN department TEXT NOT NULL DEFAULT 'Canteen'");
   const menuColumns = db.getAllSync<{ name: string }>(
     "PRAGMA table_info(menu_items)",
   );
@@ -235,6 +259,7 @@ function initializeDatabase() {
   );
   if (!orderItemColumns.some((column) => column.name === "token"))
     db.execSync("ALTER TABLE order_items ADD COLUMN token INTEGER");
+  initializeCloudSync(db);
 }
 
 initializeDatabase();
@@ -266,6 +291,7 @@ function CanteenApp() {
   const [rangeSales, setRangeSales] = useState(0);
   const [rangeOrders, setRangeOrders] = useState(0);
   const [rangeCost, setRangeCost] = useState(0);
+  const [rangeBhojanshalaCost, setRangeBhojanshalaCost] = useState(0);
   const [purchaseItems, setPurchaseItems] =
     useState<PurchaseItem[]>(stockItems);
   const [purchaseItemName, setPurchaseItemName] = useState("");
@@ -274,6 +300,7 @@ function CanteenApp() {
   const [purchaseCost, setPurchaseCost] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(today());
   const [purchaseHistory, setPurchaseHistory] = useState<PurchaseRow[]>([]);
+  const [purchaseDepartment, setPurchaseDepartment] = useState<InventoryDepartment>("Canteen");
   const [loadedReportDate, setLoadedReportDate] = useState(today());
   const [reportPreviewVisible, setReportPreviewVisible] = useState(false);
   const [bhojanshalaSalesPreviewVisible, setBhojanshalaSalesPreviewVisible] = useState(false);
@@ -368,6 +395,86 @@ function CanteenApp() {
   const [scanningBluetooth, setScanningBluetooth] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [printerStatus, setPrinterStatus] = useState("");
+  const [cloudApiUrl, setCloudApiUrl] = useState(() =>
+    db.getFirstSync<{ setting_value: string }>(
+      "SELECT setting_value FROM app_settings WHERE setting_key = 'cloud_api_url'",
+    )?.setting_value ?? "",
+  );
+  const [cloudSyncKey, setCloudSyncKey] = useState("");
+  const [cloudSyncing, setCloudSyncing] = useState(false);
+  const [cloudSyncMessage, setCloudSyncMessage] = useState("");
+
+  useEffect(() => {
+    SecureStore.getItemAsync("canteen_cloud_sync_key")
+      .then((value) => value && setCloudSyncKey(value))
+      .catch(() => setCloudSyncMessage("Could not read the saved sync key from secure storage."));
+  }, []);
+
+  async function saveCloudSyncSettings() {
+    const url = cloudApiUrl.trim();
+    const key = cloudSyncKey.trim();
+    if (!url.startsWith("https://") || !url.endsWith("sync.php")) {
+      Alert.alert("Check sync URL", "Enter the full HTTPS URL ending in /sync.php.");
+      return false;
+    }
+    if (!key) {
+      Alert.alert("Sync key required", "Enter the sync key from the Hostinger server config.");
+      return false;
+    }
+    try {
+      await SecureStore.setItemAsync("canteen_cloud_sync_key", key);
+      db.runSync(
+        "INSERT INTO app_settings (setting_key, setting_value) VALUES ('cloud_api_url', ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value",
+        url,
+      );
+      setCloudApiUrl(url);
+      setCloudSyncKey(key);
+      setCloudSyncMessage("Sync settings saved on this device.");
+      return true;
+    } catch (error) {
+      setCloudSyncMessage(`Could not save sync settings: ${String(error)}`);
+      return false;
+    }
+  }
+
+  async function syncCloudData() {
+    if (cloudSyncing) return;
+    if (!(await saveCloudSyncSettings())) return;
+    setCloudSyncing(true);
+    setCloudSyncMessage("Connecting to Hostinger…");
+    try {
+      const clientId = db.getFirstSync<{ setting_value: string }>(
+        "SELECT setting_value FROM app_settings WHERE setting_key = 'cloud_sync_client_id'",
+      )?.setting_value;
+      if (!clientId) throw new Error("This device is missing its sync ID. Restart the app and try again.");
+      const result = await synchronizeCloudDatabase(
+        db,
+        cloudApiUrl.trim(),
+        cloudSyncKey.trim(),
+        clientId,
+        setCloudSyncMessage,
+      );
+      setCart({});
+      refreshMenu();
+      refreshPurchases(purchaseDepartment);
+      refreshHistory();
+      refreshReport(reportDate);
+      refreshBhojanshalaSales(bhojanshalaSalesDate);
+      refreshRangeReport(rangeStart, rangeEnd);
+      setBhojanshalaPrices({
+        Breakfast: db.getFirstSync<{ setting_value: string }>("SELECT setting_value FROM app_settings WHERE setting_key = ?", bhojanshalaPriceSettingKeys.Breakfast)?.setting_value ?? bhojanshalaDefaultPrices.Breakfast,
+        Lunch: db.getFirstSync<{ setting_value: string }>("SELECT setting_value FROM app_settings WHERE setting_key = ?", bhojanshalaPriceSettingKeys.Lunch)?.setting_value ?? bhojanshalaDefaultPrices.Lunch,
+        Dinner: db.getFirstSync<{ setting_value: string }>("SELECT setting_value FROM app_settings WHERE setting_key = ?", bhojanshalaPriceSettingKeys.Dinner)?.setting_value ?? bhojanshalaDefaultPrices.Dinner,
+      });
+      setBhojanshalaParcelPrice(db.getFirstSync<{ setting_value: string }>("SELECT setting_value FROM app_settings WHERE setting_key = 'bhojanshala_parcel_price'")?.setting_value ?? "0");
+      setReceiptSerialStart(db.getFirstSync<{ setting_value: string }>("SELECT setting_value FROM app_settings WHERE setting_key = 'receipt_serial_start'")?.setting_value ?? "1");
+      setCloudSyncMessage(`Sync complete. Sent ${result.uploaded} changes and received ${result.downloaded}.`);
+    } catch (error) {
+      setCloudSyncMessage(`Sync failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setCloudSyncing(false);
+    }
+  }
 
   useEffect(() => {
     try {
@@ -598,11 +705,12 @@ function CanteenApp() {
       ),
     );
   }
-  function refreshPurchases() {
+  function refreshPurchases(department: InventoryDepartment = "Canteen") {
     const known = db.getAllSync<{ item_name: string; unit: string }>(
-      "SELECT item_name, unit FROM inventory_purchases GROUP BY item_name ORDER BY item_name COLLATE NOCASE",
+      "SELECT item_name, unit FROM inventory_purchases WHERE department = ? GROUP BY item_name ORDER BY item_name COLLATE NOCASE",
+      department,
     );
-    const merged = [...stockItems];
+    const merged = [...(department === "Canteen" ? stockItems : bhojanshalaStockItems)];
     for (const item of known)
       if (
         !merged.some(
@@ -617,9 +725,17 @@ function CanteenApp() {
     setPurchaseItems(merged);
     setPurchaseHistory(
       db.getAllSync<PurchaseRow>(
-        "SELECT id, item_name, quantity, unit, total_cost, purchase_date FROM inventory_purchases ORDER BY purchase_date DESC, id DESC LIMIT 60",
+        "SELECT id, item_name, quantity, unit, total_cost, purchase_date, department FROM inventory_purchases ORDER BY purchase_date DESC, id DESC LIMIT 120",
       ),
     );
+  }
+  function selectInventoryDepartment(department: InventoryDepartment) {
+    setPurchaseDepartment(department);
+    setPurchaseItemName("");
+    setPurchaseUnit("kg");
+    setPurchaseQuantity("");
+    setPurchaseCost("");
+    refreshPurchases(department);
   }
   function refreshRangeReport(start: string, end: string) {
     if (!isValidDate(start) || !isValidDate(end) || start > end) {
@@ -645,7 +761,14 @@ function CanteenApp() {
     );
     setRangeCost(
       db.getFirstSync<{ total: number }>(
-        "SELECT COALESCE(SUM(total_cost), 0) AS total FROM inventory_purchases WHERE purchase_date BETWEEN ? AND ?",
+        "SELECT COALESCE(SUM(total_cost), 0) AS total FROM inventory_purchases WHERE department = 'Canteen' AND purchase_date BETWEEN ? AND ?",
+        start,
+        end,
+      )?.total ?? 0,
+    );
+    setRangeBhojanshalaCost(
+      db.getFirstSync<{ total: number }>(
+        "SELECT COALESCE(SUM(total_cost), 0) AS total FROM inventory_purchases WHERE department = 'Bhojanshala' AND purchase_date BETWEEN ? AND ?",
         start,
         end,
       )?.total ?? 0,
@@ -675,13 +798,14 @@ function CanteenApp() {
     const unit = purchaseUnit;
     try {
       db.runSync(
-        "INSERT INTO inventory_purchases (item_name, quantity, unit, total_cost, purchase_date, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO inventory_purchases (item_name, quantity, unit, total_cost, purchase_date, created_at, department) VALUES (?, ?, ?, ?, ?, ?, ?)",
         itemName,
         quantity,
         unit,
         cost,
         purchaseDate.trim(),
         new Date().toISOString(),
+        purchaseDepartment,
       );
     } catch (error) {
       Alert.alert(
@@ -692,7 +816,7 @@ function CanteenApp() {
     }
     setPurchaseQuantity("");
     setPurchaseCost("");
-    refreshPurchases();
+    refreshPurchases(purchaseDepartment);
     refreshRangeReport(rangeStart, rangeEnd);
   }
 
@@ -756,33 +880,48 @@ function CanteenApp() {
       const createdAt = new Date().toISOString();
       const orderTotal = total;
       const linesToSave = cartLines;
+      const orderDate = today();
+      const orderSyncId = db.getFirstSync<{ id: string }>(
+        "SELECT lower(hex(randomblob(16))) AS id",
+      )!.id;
+      const sequence = db.getFirstSync<{ last_token: number }>(
+        "SELECT last_token FROM daily_token_sequences WHERE order_date = ?",
+        orderDate,
+      );
+      const configuredStart = Number(receiptSerialStart);
+      const firstToken = Math.max(
+        Number.isSafeInteger(configuredStart) && configuredStart > 0 ? configuredStart : 1,
+        (sequence?.last_token ?? 0) + 1,
+      );
+      let token = firstToken;
+      if (cloudApiUrl.trim() && cloudSyncKey.trim()) {
+        const clientId = db.getFirstSync<{ setting_value: string }>(
+          "SELECT setting_value FROM app_settings WHERE setting_key = 'cloud_sync_client_id'",
+        )?.setting_value;
+        if (clientId) {
+          try {
+            token = await reserveCloudToken(
+              cloudApiUrl.trim(),
+              cloudSyncKey.trim(),
+              clientId,
+              orderSyncId,
+              orderDate,
+              firstToken,
+            );
+          } catch (error) {
+            setCloudSyncMessage(`Order saved offline with local receipt number. Cloud token reservation failed: ${String(error)}`);
+          }
+        }
+      }
       await db.withExclusiveTransactionAsync(async (txn) => {
-        const orderDate = today();
-        const sequence = await txn.getFirstAsync<{ last_token: number }>(
-          "SELECT last_token FROM daily_token_sequences WHERE order_date = ?",
-          orderDate,
-        );
-        const configuredStart = Number(receiptSerialStart);
-        const firstToken =
-          Number.isSafeInteger(configuredStart) && configuredStart > 0
-            ? configuredStart
-            : 1;
-        const nextToken = sequence
-          ? sequence.last_token + 1
-          : ((
-              await txn.getFirstAsync<{ n: number }>(
-                "SELECT COALESCE(MAX(token), 0) + 1 AS n FROM orders WHERE order_date = ?",
-                orderDate,
-              )
-            )?.n ?? firstToken);
-        const token = Math.max(firstToken, nextToken);
         await txn.runAsync(
-          "INSERT INTO daily_token_sequences (order_date, last_token) VALUES (?, ?) ON CONFLICT(order_date) DO UPDATE SET last_token = excluded.last_token",
+          "INSERT INTO daily_token_sequences (order_date, last_token) VALUES (?, ?) ON CONFLICT(order_date) DO UPDATE SET last_token = MAX(last_token, excluded.last_token)",
           orderDate,
           token,
         );
         const orderInsert = await txn.runAsync(
-          "INSERT INTO orders (token, order_date, total, created_at) VALUES (?, ?, ?, ?)",
+          "INSERT INTO orders (sync_id, token, order_date, total, created_at) VALUES (?, ?, ?, ?, ?)",
+          orderSyncId,
           token,
           orderDate,
           orderTotal,
@@ -1511,6 +1650,8 @@ function CanteenApp() {
                         ? "Inventory"
                         : tab === "analysis"
                           ? "Cost"
+                          : tab === "cloudSync"
+                            ? "Cloud Sync"
                           : tab === "printer"
                             ? "Printer setup"
                             : "Sales report"}
@@ -1537,6 +1678,7 @@ function CanteenApp() {
             "bhojanshalaSales",
             "inventory",
             "analysis",
+            "cloudSync",
             "printer",
           ] as const
         ).map((key) => (
@@ -1562,7 +1704,9 @@ function CanteenApp() {
                             ? "Inventory"
                             : key === "analysis"
                               ? "Cost"
-                              : "Printer"}
+                              : key === "cloudSync"
+                                ? "Cloud Sync"
+                                : "Printer"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -1950,7 +2094,21 @@ function CanteenApp() {
             contentContainerStyle={{ paddingBottom: 32 }}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={s.sectionTitle}>Log stock received</Text>
+            <Text style={s.fieldLabel}>Inventory</Text>
+            <View style={s.copyTabs}>
+              {(["Canteen", "Bhojanshala"] as InventoryDepartment[]).map((department) => (
+                <TouchableOpacity
+                  key={department}
+                  style={[s.copyTab, purchaseDepartment === department && s.copyTabActive]}
+                  onPress={() => selectInventoryDepartment(department)}
+                >
+                  <Text style={[s.copyTabText, purchaseDepartment === department && s.copyTabTextActive]}>
+                    {department}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.sectionTitle}>Log {purchaseDepartment} stock received</Text>
             <Text style={s.fieldLabel}>Enter item name</Text>
             <TextInput
               value={purchaseItemName}
@@ -2051,9 +2209,9 @@ function CanteenApp() {
               <Text style={s.primaryText}>Save stock purchase</Text>
             </TouchableOpacity>
             <Text style={[s.sectionTitle, { marginTop: 22 }]}>
-              Recent purchases
+              Recent {purchaseDepartment} purchases
             </Text>
-            {purchaseHistory.map((row) => (
+            {purchaseHistory.filter((row) => row.department === purchaseDepartment).map((row) => (
               <View key={row.id} style={s.purchaseRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.itemName}>
@@ -2069,6 +2227,54 @@ function CanteenApp() {
             {!purchaseHistory.length && (
               <Text style={s.hint}>Purchases you add will appear here.</Text>
             )}
+            {!!purchaseHistory.length && !purchaseHistory.some((row) => row.department === purchaseDepartment) && (
+              <Text style={s.hint}>Purchases you add to {purchaseDepartment} inventory will appear here.</Text>
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      )}
+      {tab === "cloudSync" && (
+        <KeyboardAvoidingView
+          style={s.body}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <ScrollView contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+            <Text style={s.sectionTitle}>Connect this device to the shared database</Text>
+            <Text style={s.hint}>
+              Install the Hostinger sync API first. Enter its HTTPS URL and the sync key from the server config. Database credentials stay on Hostinger.
+            </Text>
+            <Text style={s.fieldLabel}>Hostinger sync API URL</Text>
+            <TextInput
+              value={cloudApiUrl}
+              onChangeText={setCloudApiUrl}
+              placeholder="https://your-domain.com/canteen-sync/sync.php"
+              autoCapitalize="none"
+              keyboardType="url"
+              style={s.input}
+            />
+            <Text style={s.fieldLabel}>Shared sync key</Text>
+            <TextInput
+              value={cloudSyncKey}
+              onChangeText={setCloudSyncKey}
+              placeholder="Enter the sync key from Hostinger config"
+              autoCapitalize="none"
+              secureTextEntry
+              style={s.input}
+            />
+            <TouchableOpacity style={s.secondary} onPress={saveCloudSyncSettings}>
+              <Text style={s.secondaryText}>Save sync settings</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.primary, s.printerAction, cloudSyncing && s.disabled]}
+              onPress={syncCloudData}
+              disabled={cloudSyncing}
+            >
+              <Text style={s.primaryText}>{cloudSyncing ? "Syncing…" : "Sync now"}</Text>
+            </TouchableOpacity>
+            {!!cloudSyncMessage && <Text style={s.hint}>{cloudSyncMessage}</Text>}
+            <Text style={s.hint}>
+              Each phone keeps working offline. Tap Sync now to upload local changes and download changes from the other phones.
+            </Text>
           </ScrollView>
         </KeyboardAvoidingView>
       )}
@@ -2101,11 +2307,15 @@ function CanteenApp() {
             <Text style={s.summaryValue}>{money(rangeSales)}</Text>
           </View>
           <View style={s.summary}>
-            <Text style={s.summaryLabel}>Inventory cost</Text>
+            <Text style={s.summaryLabel}>Canteen inventory cost</Text>
             <Text style={s.summaryValue}>{money(rangeCost)}</Text>
           </View>
           <View style={s.summary}>
-            <Text style={s.summaryLabel}>Sales less purchases</Text>
+            <Text style={s.summaryLabel}>Bhojanshala inventory cost</Text>
+            <Text style={s.summaryValue}>{money(rangeBhojanshalaCost)}</Text>
+          </View>
+          <View style={s.summary}>
+            <Text style={s.summaryLabel}>Canteen sales less Canteen purchases</Text>
             <Text style={s.summaryValue}>{money(rangeSales - rangeCost)}</Text>
           </View>
           <Text style={s.hint}>
@@ -2123,7 +2333,7 @@ function CanteenApp() {
               .map((row) => (
                 <View key={row.id} style={s.purchaseRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.itemName}>{row.item_name}</Text>
+                    <Text style={s.itemName}>{row.department} · {row.item_name}</Text>
                     <Text style={s.itemPrice}>
                       {row.purchase_date} · {row.quantity}{" "}
                       {displayPurchaseUnit(row.unit)}

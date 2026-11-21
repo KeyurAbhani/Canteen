@@ -35,7 +35,8 @@
     "plugins": [
       "expo-sqlite",
       "react-native-bluetooth-ble",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {
